@@ -11,6 +11,10 @@ Diferente de ferramentas genéricas, esta plataforma foca exclusivamente nas **S
 ![Streamlit](https://img.shields.io/badge/Streamlit-UI-red)
 ![IBGE](https://img.shields.io/badge/Dados-Oficiais-green)
 
+## 🚀 [Acesse a Aplicação ao Vivo](https://nexus-industrial.streamlit.app/)
+
+> **Nota:** Este é um projeto pessoal de análise de dados públicos. A base de dados é atualizada periodicamente com as informações mais recentes da Receita Federal do Brasil, garantindo insights sempre atualizados sobre o panorama industrial brasileiro.
+
 ---
 
 ## Pilares da Análise
