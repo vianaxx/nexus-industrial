@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Database (Generated file, very large)
+*.db
+*.db-journal
+
+# Data Files (Source CSVs, very large)
+*.CSV
+*.csv
+
+# Streamlit
+# Streamlit
+# Streamlit
+.streamlit/
+!.streamlit/config.toml
+
+# Secrets & Credentials (CRITICAL)
+service_account.json
+.env
+secrets.toml
+
+# Data & Archives
+*.zip
+*.csv
+*.CSV
+*.json
+!src/**/*.json 
+# We ignore root jsons (ingestion logs) but might want to keep config jsons in src if any (though usually config.py is used)
+# Adjusting to be safe:
+ingestion_status.json
+tmp_*.json
+
+# Logs & Temporary
+*.log
+tmp_*.py
