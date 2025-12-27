@@ -2,7 +2,7 @@ import os
 import pandas as pd
 from google.cloud import bigquery
 from google.oauth2 import service_account
-from .config import GCP_PROJECT_ID, BQ_DATASET, GCP_CREDENTIALS_JSON, PROJECT_SCOPE_ONLY
+from .config import GCP_PROJECT_ID, BQ_DATASET, GCP_CREDENTIALS_JSON, GCP_CREDENTIALS_DICT, PROJECT_SCOPE_ONLY
 import unicodedata
 
 class BigQueryDatabase:
@@ -12,13 +12,15 @@ class BigQueryDatabase:
         self.credentials = None
         
         # Determine authentication method
-        if GCP_CREDENTIALS_JSON:
+        # Prefer dict credentials (Streamlit Secrets) when available
+        if GCP_CREDENTIALS_DICT:
+            self.credentials = service_account.Credentials.from_service_account_info(GCP_CREDENTIALS_DICT)
+        elif GCP_CREDENTIALS_JSON:
             if os.path.exists(GCP_CREDENTIALS_JSON):
                 # It's a file path
                 self.credentials = service_account.Credentials.from_service_account_file(GCP_CREDENTIALS_JSON)
             else:
-                # Could be JSON content string (streamlit secrets style) unfortunately service_account.Credentials.from_service_account_info takes a dict
-                # For now assume file path or environment default
+                # Could be JSON content string but we don't have dict; fallback to default auth
                 pass
 
         if self.credentials:

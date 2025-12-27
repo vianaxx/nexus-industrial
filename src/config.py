@@ -29,6 +29,7 @@ try:
         with open(_secrets_key, "w") as f:
             json.dump(dict(st.secrets["gcp_service_account"]), f)
         GCP_CREDENTIALS_JSON = str(_secrets_key)
+        GCP_CREDENTIALS_DICT = dict(st.secrets["gcp_service_account"])
         # Also override project_id from secrets if available
         if "project_id" in st.secrets["gcp_service_account"]:
             os.environ["GCP_PROJECT_ID"] = st.secrets["gcp_service_account"]["project_id"]
@@ -38,14 +39,18 @@ try:
         GCP_CREDENTIALS_JSON = str(_local_key)
     else:
         GCP_CREDENTIALS_JSON = None
+        GCP_CREDENTIALS_DICT = None
 except (ImportError, FileNotFoundError, Exception):
     # Fallback for local run without streamlit or issues
     if os.getenv("GCP_CREDENTIALS_JSON"):
         GCP_CREDENTIALS_JSON = os.getenv("GCP_CREDENTIALS_JSON")
+        GCP_CREDENTIALS_DICT = None
     elif _local_key.exists():
         GCP_CREDENTIALS_JSON = str(_local_key)
+        GCP_CREDENTIALS_DICT = None
     else:
         GCP_CREDENTIALS_JSON = None
+        GCP_CREDENTIALS_DICT = None
 
 # BigQuery Settings
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "seu-projeto-id")
