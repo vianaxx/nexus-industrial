@@ -63,7 +63,7 @@ O projeto utiliza uma arquitetura híbrida de alta performance:
 
 ### 1. Clone o Repositório
 ```bash
-git clone https://github.com/seu-repositorio/nexus-industrial.git
+git clone [https://github.com/seu-repositorio/nexus-industrial.git](https://github.com/vianaxx/nexus-industrial.git)
 cd nexus-industrial
 ```
 
