@@ -87,30 +87,6 @@ Para acessar o Data Warehouse, você precisa de uma chave de conta de serviço:
 ```bash
 streamlit run app.py
 ```
-
----
-
-## Deploy no Streamlit Cloud (Grátis)
-
-Este projeto está pronto para ser hospedado gratuitamente no **Streamlit Community Cloud**.
-
-1.  Faça o Fork deste repositório no GitHub.
-2.  Acesse [share.streamlit.io](https://share.streamlit.io) e conecte o repositório.
-3.  **Configuração de Segredos (Secrets):**
-    Como o projeto usa BigQuery, você **não** deve subir o arquivo `service_account.json` para o GitHub. Em vez disso, configure os segredos nas configurações do app no Streamlit Cloud:
-
-    ```toml
-    # .streamlit/secrets.toml
-    
-    [gcp_service_account]
-    project_id = "seu-projeto-id"
-    private_key = "-----BEGIN PRIVATE KEY-----\n..."
-    client_email = "seu-email@..."
-    # ... (copie todo o conteúdo do seu JSON aqui)
-    ```
-
-4.  O Streamlit detectará automaticamente o `requirements.txt` e instalará as dependências.
-
 ---
 
 ## Estrutura do Projeto
