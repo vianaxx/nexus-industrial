@@ -1,37 +1,88 @@
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Database (Generated file, very large)
-*.db
-*.db-journal
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
 
-# Data Files (Source CSVs, very large)
-*.CSV
-*.csv
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
 
 # Streamlit
-# Streamlit
-# Streamlit
-.streamlit/
-!.streamlit/config.toml
+.streamlit/secrets.toml
+.streamlit/config.toml
 
-# Secrets & Credentials (CRITICAL)
+# Google Cloud / BigQuery Credentials
 service_account.json
-.env
-secrets.toml
-
-# Data & Archives
-*.zip
-*.csv
-*.CSV
+service_account_secrets.json
 *.json
-!src/**/*.json 
-# We ignore root jsons (ingestion logs) but might want to keep config jsons in src if any (though usually config.py is used)
-# Adjusting to be safe:
-ingestion_status.json
-tmp_*.json
+!package.json
+!tsconfig.json
 
-# Logs & Temporary
+# Application Data & Cache
+data/
+*.db
+*.sqlite
+*.sqlite3
+ingestion_status.json
+
+# Logs
 *.log
-tmp_*.py
+logs/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json

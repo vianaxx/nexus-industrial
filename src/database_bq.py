@@ -85,12 +85,14 @@ class BigQueryDatabase:
                 st.uf,
                 st.municipio,
                 st.situacao_cadastral,
-                st.data_inicio_atividade
+                st.situacao_cadastral,
+                st.data_inicio_atividade,
+                st.cnpj_ordem,
+                st.cnpj_dv
             FROM `{self.dataset_id}.empresas` e
             LEFT JOIN `{self.dataset_id}.naturezas` n ON e.natureza_juridica = n.codigo
             LEFT JOIN `{self.dataset_id}.estabelecimentos` st 
-                ON e.cnpj_basico = st.cnpj_basico 
-                AND st.identificador_matriz_filial = '1' -- Only Matriz details
+                ON e.cnpj_basico = st.cnpj_basico
         """
         
         job_config = bigquery.QueryJobConfig(
@@ -237,15 +239,18 @@ class BigQueryDatabase:
 
     def _build_where_clause(self, params, min_capital=0, max_capital=None, portes=None, 
                           only_active=False, ufs=None, municipio_codes=None, naturezas=None, 
-                          cnaes=None, sectors=None, date_start=None, date_end=None, search_term=None):
+                          cnaes=None, sectors=None, date_start=None, date_end=None, search_term=None,
+                          branch_mode="Todos", limit=None):
         where_clauses = []
         
         # Search Term (Name or CNPJ)
         if search_term:
             clean_term = search_term.replace(".", "").replace("/", "").replace("-", "")
             if clean_term.isdigit():
+                 # Handle Full CNPJ (14 digits) -> Extract Root (8 digits)
+                 search_val = clean_term[:8] if len(clean_term) >= 8 else clean_term
                  where_clauses.append("e.cnpj_basico LIKE @search_cnpj")
-                 params.append(bigquery.ScalarQueryParameter("search_cnpj", "STRING", f"%{clean_term}%"))
+                 params.append(bigquery.ScalarQueryParameter("search_cnpj", "STRING", f"%{search_val}%"))
             else:
                  where_clauses.append("e.razao_social LIKE @search_name")
                  params.append(bigquery.ScalarQueryParameter("search_name", "STRING", f"%{search_term.upper()}%"))
@@ -312,8 +317,17 @@ class BigQueryDatabase:
             params.append(bigquery.ScalarQueryParameter("d_end", "STRING", date_end))
             
         # CRITICAL: Enforce Project Scope (Industrial Only)
-        if PROJECT_SCOPE_ONLY:
+        # Exception: If user searched specifically for something, we show it regardless of sector
+        if PROJECT_SCOPE_ONLY and not search_term:
             where_clauses.append("CAST(SUBSTR(st.cnae_fiscal_principal, 1, 2) AS INT64) BETWEEN 5 AND 33")
+            
+        # Branch Mode Filter
+        # 1 = Matriz, 2 = Filial
+        if branch_mode == "Somente Matrizes":
+            where_clauses.append("st.identificador_matriz_filial = '1'")
+        elif branch_mode == "Somente Filiais":
+            where_clauses.append("st.identificador_matriz_filial = '2'")
+        # "Todos" maps to no filter (implicit 1 or 2)
 
         return " AND ".join(where_clauses)
 
@@ -335,16 +349,21 @@ class BigQueryDatabase:
                 e.porte_empresa,
                 SAFE_CAST(REPLACE(e.capital_social, ',', '.') AS FLOAT64) as capital_social,
                 e.natureza_juridica,
+                n.descricao as natureza_desc,
                 st.cnae_fiscal_principal,
                 st.uf,
                 st.municipio as municipio_codigo,
+                INITCAP(m.descricao) as municipio_nome,
                 st.situacao_cadastral,
-                st.data_inicio_atividade
+                st.data_inicio_atividade,
+                st.cnpj_ordem,
+                st.cnpj_dv,
+                st.identificador_matriz_filial
             FROM `{self.dataset_id}.empresas` e
             JOIN `{self.dataset_id}.estabelecimentos` st 
                 ON e.cnpj_basico = st.cnpj_basico
-                AND st.identificador_matriz_filial = '1'
             LEFT JOIN `{self.dataset_id}.municipios` m ON st.municipio = m.codigo
+            LEFT JOIN `{self.dataset_id}.naturezas` n ON e.natureza_juridica = n.codigo
             {where_sql}
             ORDER BY capital_social DESC
             {limit_sql}
@@ -365,7 +384,7 @@ class BigQueryDatabase:
                 ARRAY_AGG(e.razao_social LIMIT 5) as companies
             FROM `{self.dataset_id}.empresas` e
             JOIN `{self.dataset_id}.estabelecimentos` st 
-                ON e.cnpj_basico = st.cnpj_basico AND st.identificador_matriz_filial = '1'
+                ON e.cnpj_basico = st.cnpj_basico
             LEFT JOIN `{self.dataset_id}.municipios` m ON st.municipio = m.codigo
             {where_sql}
             GROUP BY month_year
@@ -384,7 +403,7 @@ class BigQueryDatabase:
             SELECT st.uf, count(*) as count
             FROM `{self.dataset_id}.empresas` e
             JOIN `{self.dataset_id}.estabelecimentos` st 
-                ON e.cnpj_basico = st.cnpj_basico AND st.identificador_matriz_filial = '1'
+                ON e.cnpj_basico = st.cnpj_basico
             LEFT JOIN `{self.dataset_id}.municipios` m ON st.municipio = m.codigo
             {where_sql}
             GROUP BY st.uf
@@ -403,7 +422,7 @@ class BigQueryDatabase:
             SELECT INITCAP(m.descricao) as city, count(*) as count
             FROM `{self.dataset_id}.empresas` e
             JOIN `{self.dataset_id}.estabelecimentos` st 
-                ON e.cnpj_basico = st.cnpj_basico AND st.identificador_matriz_filial = '1'
+                ON e.cnpj_basico = st.cnpj_basico
             LEFT JOIN `{self.dataset_id}.municipios` m ON st.municipio = m.codigo
             {where_sql}
             GROUP BY city
@@ -425,12 +444,39 @@ class BigQueryDatabase:
                 count(*) as count
             FROM `{self.dataset_id}.empresas` e
             JOIN `{self.dataset_id}.estabelecimentos` st 
-                ON e.cnpj_basico = st.cnpj_basico AND st.identificador_matriz_filial = '1'
+                ON e.cnpj_basico = st.cnpj_basico
             LEFT JOIN `{self.dataset_id}.municipios` m ON st.municipio = m.codigo
             {where_sql}
             GROUP BY sector_code
             ORDER BY count DESC
             LIMIT 10
+        """
+        job_config = bigquery.QueryJobConfig(query_parameters=params)
+        return self.client.query(sql, job_config=job_config).to_dataframe()
+
+    def get_closing_trend(self, **kwargs) -> pd.DataFrame:
+        if not self.client: return pd.DataFrame()
+        params = []
+        # Force only_active=False to avoid conflict, we want closed ones
+        kwargs['only_active'] = False
+        
+        where_clause = self._build_where_clause(params, **kwargs)
+        base_where = f"WHERE {where_clause}" if where_clause else "WHERE 1=1"
+        
+        # Enforce Closed Status (08)
+        full_where = f"{base_where} AND st.situacao_cadastral = '08'"
+        
+        sql = f"""
+            SELECT 
+                SUBSTR(st.data_situacao_cadastral, 1, 6) as month_year,
+                count(*) as count
+            FROM `{self.dataset_id}.empresas` e
+            JOIN `{self.dataset_id}.estabelecimentos` st 
+                ON e.cnpj_basico = st.cnpj_basico
+            LEFT JOIN `{self.dataset_id}.municipios` m ON st.municipio = m.codigo
+            {full_where}
+            GROUP BY month_year
+            ORDER BY month_year
         """
         job_config = bigquery.QueryJobConfig(query_parameters=params)
         return self.client.query(sql, job_config=job_config).to_dataframe()
@@ -447,7 +493,7 @@ class BigQueryDatabase:
                 avg(SAFE_CAST(REPLACE(e.capital_social, ',', '.') AS FLOAT64)) as avg_capital
             FROM `{self.dataset_id}.empresas` e
             JOIN `{self.dataset_id}.estabelecimentos` st 
-                ON e.cnpj_basico = st.cnpj_basico AND st.identificador_matriz_filial = '1'
+                ON e.cnpj_basico = st.cnpj_basico
             LEFT JOIN `{self.dataset_id}.municipios` m ON st.municipio = m.codigo
             {where_sql}
         """

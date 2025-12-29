@@ -9,11 +9,12 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from src.config import PAGE_TITLE, PAGE_ICON, LAYOUT, STATUS_FILE
 from src.database import get_database
 from src.ui.dashboard import (
-    render_sidebar_filters, 
+    render_sidebar_filters,
     render_strategic_view, 
     render_macro_view, 
     render_market_intelligence_view
 )
+from src.ui.footer import render_footer
 from src.ui.styles import get_custom_css
 # Technical components removed for clean UI
 
@@ -36,12 +37,9 @@ def main():
         st.error(f"Database Initialization Error: {e}")
         st.stop()
         
-    # --- GLOBAL FILTERS (SIDEBAR) ---
+    # --- SHARED SIDEBAR CONTENT (Top) ---
     with st.sidebar:
-        if PAGE_ICON:
-            st.title(f"{PAGE_ICON} {PAGE_TITLE}")
-        else:
-            st.title(PAGE_TITLE)
+        st.title(PAGE_TITLE)
         
         # Scope Definition
         with st.expander("Escopo & Metodologia", expanded=False):
@@ -51,19 +49,17 @@ def main():
             **Foco:** Indústrias Extrativas e de Transformação (CNAE Seções B e C).
             
             **Metodologia Híbrida:**
-            1.  **Micro (Receita Federal):** Monitora a abertura de CNPJs como *proxy* de investimento.
-            2.  **Macro (IBGE):** Acompanha a produção física oficial (PIM-PF).
-            
-            *Nota: O sistema filtra automaticamente empresas fora do escopo industrial (Comércio/Serviços).*
+            1.  **Micro (Receita Federal):** CNPJ como *proxy* de investimento.
+            2.  **Macro (IBGE):** Produção Física Oficial.
             """)
         
-        filters = render_sidebar_filters(db) # Get Filter Dict
-        # Status monitor removed
+        # Get Filter Dict (Global) - DEFINED HERE
+        filters = render_sidebar_filters(db) 
+        
         st.divider()
-        st.caption("v2.1 - Nexus Industrial")
+        st.caption(f"v2.3 | {PAGE_TITLE}")
 
-    # --- MAIN CONTENT ---
-    # Global Search Bar
+    # --- SHARED MAIN CONTENT (Search) ---
     st.markdown("## Busca Global")
     col_search, col_btn = st.columns([4, 1])
     with col_search:
@@ -71,20 +67,20 @@ def main():
     with col_btn:
         start_btn = st.button("Pesquisar", type="primary", use_container_width=True)
     
-    # Update filters with search term
+    # Update filters with search term (Found 'filters' correctly now)
     if search_query:
         filters['search_term'] = search_query.strip()
     else:
         filters['search_term'] = None
 
-    # Tabs reordered to match "Reading Guide" Logic (Structure -> Activity -> Dynamics)
+    # Apps Tabs: Structure -> Activity -> Dynamics
     tab1, tab2, tab3 = st.tabs([
         "1. Estrutura (Mercado)", 
         "2. Atividade (Macro)", 
         "3. Dinâmica (Estratégia)"
     ])
     
-    # 1. Structure (Who exists?)
+    # 1. Structure (Who exists?) - DEFAULT LANDING
     with tab1:
         render_market_intelligence_view(db, filters)
     
@@ -92,9 +88,11 @@ def main():
     with tab2:
         render_macro_view(filters)
         
-    # 3. Dynamics (How it evolves - Correlation)
     with tab3:
         render_strategic_view(db, filters)
+
+    # Global Footer
+    render_footer()
 
 if __name__ == "__main__":
     main()

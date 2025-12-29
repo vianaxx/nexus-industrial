@@ -2,7 +2,7 @@ import requests
 import pandas as pd
 import streamlit as st
 BASE_URL = "https://servicodados.ibge.gov.br/api/v3/agregados/8888"
-VARIABLES = "12606,11601,11604"
+VARIABLES = "12606,12607,11601,11602,11603,11604"
 CNAE_TO_IBGE_MAP = {
     '10': '129317', '11': '129318', '12': '129319', '13': '129320', '14': '129321',
     '15': '129322', '16': '129323', '17': '129324', '18': '129325', '19': '129326',
@@ -18,7 +18,7 @@ def fetch_industry_data(sector_code=None):
         class_id = CNAE_TO_IBGE_MAP.get(clean_code, '129314')
     url = f"{BASE_URL}/periodos/-120/variaveis/{VARIABLES}?localidades=N1[all]|N3[all]&classificacao=544[{class_id}]"
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=30)
         response.raise_for_status()
         data = response.json()
         rows = []
