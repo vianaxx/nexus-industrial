@@ -825,7 +825,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                          val = row['capital_social']
                          val_fmt = f"R$ {val/1e9:,.1f} B" if val > 1e9 else f"R$ {val/1e6:,.1f} M"
                          st.markdown(f"""
-                         <div style="background-color: var(--secondary-background-color); border-radius: 8px; padding: 10px; margin-bottom: 8px; border-left: 4px solid #f1c40f;">
+                         <div style="background-color: var(--secondary-background-color); border-radius: 8px; padding: 10px; margin-bottom: 8px; border: 1px solid rgba(128, 128, 128, 0.2); border-left: 4px solid #f1c40f; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
                             <div style="font-size: 0.8rem; font-weight: 600; opacity: 0.7;">#{i+1} LÍDER</div>
                             <div style="font-size: 0.95rem; font-weight: 700; word-wrap: break-word; white-space: normal;">{row['razao_social']}</div>
                             <div style="font-size: 0.8rem; opacity: 0.8;">{val_fmt}</div>
