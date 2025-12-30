@@ -752,20 +752,8 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
             df_sectors = db.get_sector_distribution(**mi_filters)
             df_companies = db.get_filtered_companies(limit=limit, **mi_filters)
 
-            # --- ENRICHMENT ---
-            if not df_companies.empty:
-                 df_nat = get_options_cached(db, 'get_all_naturezas')
-                 df_cnae = get_options_cached(db, 'get_all_cnaes')
-                 df_muni = get_options_cached(db, 'get_all_municipios')
-
-                 if 'natureza_desc' not in df_companies.columns and not df_nat.empty and 'natureza_juridica' in df_companies.columns:
-                     df_companies = df_companies.merge(df_nat, left_on='natureza_juridica', right_on='codigo', how='left').rename(columns={'descricao': 'natureza_desc'})
-                
-                 if not df_companies.empty and 'cnae_fiscal_principal' in df_companies.columns and not df_cnae.empty:
-                     df_companies = df_companies.merge(df_cnae, left_on='cnae_fiscal_principal', right_on='codigo', how='left').rename(columns={'descricao': 'cnae_desc'})
-
-                 if 'municipio' not in df_companies.columns and not df_muni.empty and 'municipio_codigo' in df_companies.columns:
-                     df_companies = df_companies.merge(df_muni, left_on='municipio_codigo', right_on='codigo', how='left').rename(columns={'descricao': 'municipio'})
+            # --- ENRICHMENT REMOVED (Handled by SQL) ---
+            # Data is now enriched directly in BigQuery for performance.
             
             if df_companies.empty:
                 st.warning("Nenhum player encontrado com os filtros atuais.")
@@ -1021,20 +1009,64 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
             if 'cnae_desc' not in df_disp.columns: df_disp['cnae_desc'] = df_disp.get('cnae_fiscal_principal', '-')
             if 'natureza_desc' not in df_disp.columns: df_disp['natureza_desc'] = df_disp.get('natureza_juridica', '-')
 
+            # Format Date
+            if 'data_inicio_atividade' in df_disp.columns:
+                df_disp['Data Abertura'] = pd.to_datetime(df_disp['data_inicio_atividade'], errors='coerce').dt.strftime('%d/%m/%Y')
+            else: df_disp['Data Abertura'] = '-'
+
+            # Format Address
+            def get_address(row):
+                parts = [row.get('tipo_logradouro', ''), row.get('logradouro', ''), row.get('numero', '')]
+                addr = " ".join([str(p) for p in parts if p]).strip()
+                if row.get('complemento'): addr += f" ({row['complemento']})"
+                if row.get('bairro'): addr += f" - {row['bairro']}"
+                if row.get('cep'): addr += f", CEP {row['cep']}"
+                return addr.strip() or '-'
+            
+            df_disp['Endereço'] = df_disp.apply(get_address, axis=1)
+            df_disp['Cidade/UF'] = df_disp['municipio_nome'] + "/" + df_disp['uf']
+
+            # Format Contact
+            def get_contact(row):
+                contacts = []
+                if row.get('correio_eletronico'): contacts.append(str(row['correio_eletronico']).lower())
+                if row.get('telefone_1'): 
+                    ddd = str(row.get('ddd_1', '')).strip()
+                    tel = str(row.get('telefone_1', '')).strip()
+                    if tel: contacts.append(f"({ddd}) {tel}")
+                return " | ".join(contacts) or '-'
+            
+            df_disp['Contato'] = df_disp.apply(get_contact, axis=1)
+
             st.dataframe(
                 df_disp,
-                height=500,
+                height=600,
                 width="stretch",
-                column_order=["cnpj_real", "tipo_label", "razao_social", "Capital (R$)", "uf", "municipio", "Porte", "Status", "cnae_desc"],
+                column_order=[
+                    "cnpj_real", 
+                    "razao_social", 
+                    "Status",
+                    "Data Abertura",
+                    "Porte",
+                    "Capital (R$)", 
+                    "Cidade/UF",
+                    "natureza_desc", 
+                    "cnae_desc",
+                    "Endereço",
+                    "Contato"
+                ],
                 column_config={
                     "cnpj_real": st.column_config.TextColumn("CNPJ", width="medium"),
-                    "tipo_label": st.column_config.TextColumn("Tipo", width="small"),
-                    "razao_social": st.column_config.TextColumn("Razão Social", width="large"),
-                    "Capital (R$)": st.column_config.TextColumn("Capital Social"),
-                    "uf": "UF",
-                    "municipio": "Cidade",
-                    "Porte": "Porte",
-                    "cnae_desc": st.column_config.TextColumn("Atividade Principal", width="medium")
+                    "razao_social": st.column_config.TextColumn("Razão Social / Nome Empresarial", width="large"),
+                    "Status": st.column_config.TextColumn("Situação", width="small"),
+                    "Data Abertura": st.column_config.TextColumn("Início Ativ.", width="small"),
+                    "Porte": st.column_config.TextColumn("Porte", width="small"),
+                    "Capital (R$)": st.column_config.TextColumn("Capital Social", width="medium"),
+                    "Cidade/UF": st.column_config.TextColumn("Localização", width="medium"),
+                    "natureza_desc": st.column_config.TextColumn("Natureza Jurídica", width="medium"),
+                    "cnae_desc": st.column_config.TextColumn("Atividade Principal (CNAE)", width="large"),
+                    "Endereço": st.column_config.TextColumn("Endereço Completo", width="large"),
+                    "Contato": st.column_config.TextColumn("Contatos", width="medium"),
                 },
                 hide_index=True
             )

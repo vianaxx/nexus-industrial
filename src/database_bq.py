@@ -343,7 +343,7 @@ class BigQueryDatabase:
         limit_sql = "LIMIT @limit_val" if limit and limit > 0 else ""
             
         sql = f"""
-            SELECT 
+            SELECT DISTINCT
                 e.cnpj_basico,
                 e.razao_social, 
                 e.porte_empresa,
@@ -351,6 +351,7 @@ class BigQueryDatabase:
                 e.natureza_juridica,
                 n.descricao as natureza_desc,
                 st.cnae_fiscal_principal,
+                c.descricao as cnae_desc,
                 st.uf,
                 st.municipio as municipio_codigo,
                 INITCAP(m.descricao) as municipio_nome,
@@ -358,12 +359,24 @@ class BigQueryDatabase:
                 st.data_inicio_atividade,
                 st.cnpj_ordem,
                 st.cnpj_dv,
-                st.identificador_matriz_filial
+                st.identificador_matriz_filial,
+                -- Address Fields
+                st.tipo_logradouro,
+                st.logradouro,
+                st.numero,
+                st.complemento,
+                st.bairro,
+                st.cep,
+                -- Contact Fields
+                st.ddd_1,
+                st.telefone_1,
+                st.correio_eletronico
             FROM `{self.dataset_id}.empresas` e
             JOIN `{self.dataset_id}.estabelecimentos` st 
                 ON e.cnpj_basico = st.cnpj_basico
             LEFT JOIN `{self.dataset_id}.municipios` m ON st.municipio = m.codigo
             LEFT JOIN `{self.dataset_id}.naturezas` n ON e.natureza_juridica = n.codigo
+            LEFT JOIN `{self.dataset_id}.cnaes` c ON st.cnae_fiscal_principal = c.codigo
             {where_sql}
             ORDER BY capital_social DESC
             {limit_sql}
