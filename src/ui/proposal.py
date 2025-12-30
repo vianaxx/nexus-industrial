@@ -246,7 +246,7 @@ def render_proposal_view(db: CNPJDatabase, filters: dict):
             
             st.dataframe(
                 df_disp,
-                use_container_width=True,
+                width="stretch",
                 column_config={
                     "[CNPJ] Completo": st.column_config.TextColumn(width="medium"),
                     "[Empresa] Capital Social": st.column_config.NumberColumn(format="R$ %.2f"),
