@@ -152,7 +152,7 @@ def render_home_view(db: CNPJDatabase, filters: dict):
                     "sector_code": "CNAE",
                     "count": st.column_config.ProgressColumn("Qtd Unidades", format="%d")
                 },
-                use_container_width=True,
+                width="stretch",
                 hide_index=True
             )
         
@@ -162,7 +162,7 @@ def render_home_view(db: CNPJDatabase, filters: dict):
              st.dataframe(
                 df_geo.head(5),
                 column_config={"uf": "Estado", "count": "Qtd"},
-                use_container_width=True,
+                width="stretch",
                 hide_index=True
             )
 

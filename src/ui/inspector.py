@@ -16,7 +16,7 @@ def render_inspector_tab():
             st.info(f"📁 Tamanho: **{size_mb:.2f} MB**")
             col_count = st.number_input("Linhas para visualizar:", min_value=5, max_value=100, value=10)
             df_preview = pd.read_csv(full_path, sep=';', encoding='latin-1', nrows=col_count, dtype=str)
-            st.dataframe(df_preview, use_container_width=True)
+            st.dataframe(df_preview, width="stretch")
             st.caption("Nota: Esta é apenas uma prévia das primeiras linhas do arquivo.")
         except Exception as e:
             st.error(f"Erro ao ler arquivo: {e}")

@@ -1024,7 +1024,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
             st.dataframe(
                 df_disp,
                 height=500,
-                use_container_width=True,
+                width="stretch",
                 column_order=["cnpj_real", "tipo_label", "razao_social", "Capital (R$)", "uf", "municipio", "Porte", "Status", "cnae_desc"],
                 column_config={
                     "cnpj_real": st.column_config.TextColumn("CNPJ", width="medium"),
