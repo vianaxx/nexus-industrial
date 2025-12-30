@@ -170,9 +170,9 @@ def render_strategic_view(db: CNPJDatabase, filters):
                 
                 with c_desc:
                     st.markdown("""
-                    <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
-                        <span style="font-weight: 600; color: #475569; font-size: 0.9em;">O que isso significa?</span><br>
-                        <span style="color: #64748b; font-size: 0.85em;">
+                    <div style="background-color: var(--secondary-background-color); padding: 15px; border-radius: 8px; border: 1px solid rgba(128, 128, 128, 0.2);">
+                        <span style="font-weight: 600; font-size: 0.9em; opacity: 0.8;">O que isso significa?</span><br>
+                        <span style="font-size: 0.85em; opacity: 0.7;">
                             O coeficiente mede se a <b>abertura de empresas</b> segue o ritmo da <b>produção industrial</b>.
                             Valores próximos de <b>1.0</b> indicam que fábricas abrem exatamente quando a produção sobe.
                         </span>
@@ -399,10 +399,10 @@ def render_macro_view(filters=None):
                 note = "(Dados mais recentes)" if is_latest else "(Histórico selecionado)"
                 
                 st.markdown(f"""
-                <div style="background-color: #f8fafc; padding: 12px; border-radius: 8px; margin-bottom: 24px; border-left: 4px solid #3b82f6; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                    <span style="font-size: 0.9em; font-weight: 600; color: #475569;">Mês de Referência (IBGE):</span>
-                    <span style="font-size: 1.1em; font-weight: 700; color: #0f172a; margin-left: 8px;">{ref_date_str}</span>
-                    <span style="font-size: 0.85em; color: #64748b; margin-left: 10px;">{note} • {actual_loc}</span>
+                <div style="background-color: var(--secondary-background-color); padding: 12px; border-radius: 8px; margin-bottom: 24px; border-left: 4px solid var(--primary-color); box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                    <span style="font-size: 0.9em; font-weight: 600; opacity: 0.8;">Mês de Referência (IBGE):</span>
+                    <span style="font-size: 1.1em; font-weight: 700; margin-left: 8px;">{ref_date_str}</span>
+                    <span style="font-size: 0.85em; opacity: 0.7; margin-left: 10px;">{note} • {actual_loc}</span>
                 </div>
                 """, unsafe_allow_html=True)
             
@@ -718,8 +718,8 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
     st.markdown("""
     <style>
     div[data-testid="stMetric"] {
-        background-color: #ffffff;
-        border: 1px solid #e2e8f0;
+        background-color: var(--background-color);
+        border: 1px solid rgba(128, 128, 128, 0.2);
         padding: 15px;
         border-radius: 8px;
         box-shadow: 0 1px 2px rgba(0,0,0,0.05);
@@ -825,10 +825,10 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                          val = row['capital_social']
                          val_fmt = f"R$ {val/1e9:,.1f} B" if val > 1e9 else f"R$ {val/1e6:,.1f} M"
                          st.markdown(f"""
-                         <div style="background-color: #f8f9fa; border-radius: 8px; padding: 10px; margin-bottom: 8px; border-left: 4px solid #f1c40f;">
-                            <div style="font-size: 0.8rem; color: #64748b; font-weight: 600;">#{i+1} LÍDER</div>
-                            <div style="font-size: 0.95rem; font-weight: 700; color: #0f172a; word-wrap: break-word; white-space: normal;">{row['razao_social']}</div>
-                            <div style="font-size: 0.8rem; color: #334155;">{val_fmt}</div>
+                         <div style="background-color: var(--secondary-background-color); border-radius: 8px; padding: 10px; margin-bottom: 8px; border-left: 4px solid #f1c40f;">
+                            <div style="font-size: 0.8rem; font-weight: 600; opacity: 0.7;">#{i+1} LÍDER</div>
+                            <div style="font-size: 0.95rem; font-weight: 700; word-wrap: break-word; white-space: normal;">{row['razao_social']}</div>
+                            <div style="font-size: 0.8rem; opacity: 0.8;">{val_fmt}</div>
                          </div>
                          """, unsafe_allow_html=True)
 

@@ -80,13 +80,13 @@ def render_home_view(db: CNPJDatabase, filters: dict):
 
     # --- FAIXA 1: HEADLINE ---
     st.markdown(f"""
-    <div style="padding: 20px; background-color: #f0f2f6; border-left: 5px solid {phase_color}; border-radius: 5px; margin-bottom: 20px;">
-        <h2 style="margin:0; color: #31333F;">A indústria encontra-se em fase de <strong>{phase}</strong></h2>
+    <div style="padding: 20px; background-color: var(--secondary-background-color); border-left: 5px solid {phase_color}; border-radius: 5px; margin-bottom: 20px;">
+        <h2 style="margin:0;">A indústria encontra-se em fase de <strong>{phase}</strong></h2>
         <p style="margin:5px 0 0 0; font-size: 1.1em;">
             Produção <b>{_get_trend_icon(ibge_trend)}</b> | 
             Estrutura Empresarial <b>{_get_trend_icon(net_balance)}</b>
         </p>
-        <p style="margin-top:10px; font-size: 0.9em; color: #555;">
+        <p style="margin-top:10px; font-size: 0.9em; opacity: 0.7;">
             <i>{msg}</i>
         </p>
     </div>

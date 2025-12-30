@@ -39,7 +39,6 @@ env/
 
 # Streamlit
 .streamlit/secrets.toml
-.streamlit/config.toml
 
 # Google Cloud / BigQuery Credentials
 service_account.json
