@@ -136,7 +136,7 @@ def render_home_view(db: CNPJDatabase, filters: dict):
                     tooltip=['Ano', 'Produção', 'Aberturas']
                 ).interactive()
                 
-                st.altair_chart(chart_cycle, use_container_width=True)
+                st.altair_chart(chart_cycle, width="stretch")
         else:
             st.info("Dados insuficientes para plotar o ciclo histórico.")
 

@@ -203,7 +203,7 @@ def render_strategic_view(db: CNPJDatabase, filters):
                     ]
                 ).properties(height=400)
                 
-                st.altair_chart(combined, use_container_width=True)
+                st.altair_chart(combined, width="stretch")
                 
                 st.info("💡 **Dica de Leitura:** A linha **Laranja (Sua Seleção)** mostra o ímpeto empreendedor. A linha **Azul (Tracejada)** é o ritmo do Brasil. Se a laranja sobe antes, é antecipação de ciclo.")
                 
@@ -238,7 +238,7 @@ def render_strategic_view(db: CNPJDatabase, filters):
                         alt.Tooltip('Empresas', title='Empresas')
                     ]
                 ).properties(height=350)
-                st.altair_chart(chart_fb, use_container_width=True)
+                st.altair_chart(chart_fb, width="stretch")
                 
                 reason = "dados esparsos" if not df_trend.empty else "falta de dados"
                 if df_ibge.empty: reason = "dados do IBGE indisponíveis no momento"
@@ -499,7 +499,7 @@ def render_macro_view(filters=None):
 
                     tooltip=[alt.Tooltip('date:T', format='%b/%Y'), alt.Tooltip('value', format='.2f')]
                 ).properties(height=280)
-                st.altair_chart(bar_pulse, use_container_width=True)
+                st.altair_chart(bar_pulse, width="stretch")
                 
             with c_trend:
                 st.markdown("#### A Tendência (Longo Prazo)")
@@ -517,7 +517,7 @@ def render_macro_view(filters=None):
 
                     tooltip=[alt.Tooltip('date:T', format='%b/%Y'), alt.Tooltip('value', format='.2f')]
                 ).properties(height=280)
-                st.altair_chart(area_trend, use_container_width=True)
+                st.altair_chart(area_trend, width="stretch")
 
             # Row 2: Annual Performance
             st.divider()
@@ -537,7 +537,7 @@ def render_macro_view(filters=None):
                     color=alt.condition(alt.datum.value > 0, alt.value('#2ca02c'), alt.value('#d62728')),
                     tooltip=[alt.Tooltip('date:T', format='%b/%Y'), alt.Tooltip('value', format='.2f')]
                 ).properties(height=250)
-                st.altair_chart(bar_yoy, use_container_width=True)
+                st.altair_chart(bar_yoy, width="stretch")
 
             with c_year:
                 st.markdown("#### Acumulado no Ano")
@@ -551,7 +551,7 @@ def render_macro_view(filters=None):
                     y=alt.Y('value:Q', title='%'),
                     tooltip=[alt.Tooltip('date:T', format='%b/%Y'), alt.Tooltip('value', format='.2f')]
                 ).properties(height=250)
-                st.altair_chart(line_year, use_container_width=True)
+                st.altair_chart(line_year, width="stretch")
 
             st.divider()
 
@@ -584,7 +584,7 @@ def render_macro_view(filters=None):
                 )
 
             chart_ibge = chart_ibge.properties(height=400).interactive()
-            st.altair_chart(chart_ibge, use_container_width=True)
+            st.altair_chart(chart_ibge, width="stretch")
 
             # --- PRO LEVEL: SCATTER & RANKING ---
             st.markdown("---")
@@ -616,7 +616,7 @@ def render_macro_view(filters=None):
                         rule_x = alt.Chart(pd.DataFrame({'x': [0]})).mark_rule(color='#94a3b8', strokeDash=[5,5]).encode(x='x')
                         rule_y = alt.Chart(pd.DataFrame({'y': [0]})).mark_rule(color='#94a3b8', strokeDash=[5,5]).encode(y='y')
                         
-                        st.altair_chart((base_scat + text_scat + rule_x + rule_y).interactive(), use_container_width=True)
+                        st.altair_chart((base_scat + text_scat + rule_x + rule_y).interactive(), width="stretch")
                         
                     with c_rank:
                         st.markdown("#### Ranking de Desempenho (12m)")
@@ -629,7 +629,7 @@ def render_macro_view(filters=None):
                             tooltip=[alt.Tooltip('location'), alt.Tooltip(acc12_key, format='.2f')]
                         ).properties(height=400)
                         
-                        st.altair_chart(rank_chart, use_container_width=True)
+                        st.altair_chart(rank_chart, width="stretch")
                 else:
                     st.info("Dados insuficientes para gerar o Mapa de Ciclo (Scatter).")
         else:
@@ -828,7 +828,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                          color=alt.value('#3b82f6'),
                          tooltip=['razao_social', 'capital_social']
                      ).properties(height=280)
-                     st.altair_chart(chart_rank, use_container_width=True)
+                     st.altair_chart(chart_rank, width="stretch")
             else:
                 st.info("Ranking indisponível para esta seleção.")
 
@@ -861,7 +861,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                         alt.Tooltip('count', title='Volume', format=',d')
                     ]
                 ).properties(height=400)
-                st.altair_chart(chart_sec, use_container_width=True)
+                st.altair_chart(chart_sec, width="stretch")
             else:
                 st.info("Sem dados setoriais disponíveis.")
 
@@ -882,7 +882,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                         order=alt.Order("count", sort="descending"),
                         tooltip=["uf", alt.Tooltip("count", title="Empresas", format=",d")]
                     ).properties(height=350, title='Ranking Estadual')
-                    st.altair_chart(chart_states, use_container_width=True)
+                    st.altair_chart(chart_states, width="stretch")
                 else:
                     st.info("Sem dados regionais.")
 
@@ -901,7 +901,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                             alt.Tooltip('count', title='Empresas', format=',d')
                         ]
                     ).properties(height=350, title='Ranking Municipal')
-                    st.altair_chart(chart_cities, use_container_width=True)
+                    st.altair_chart(chart_cities, width="stretch")
                 else:
                     st.info("Sem dados municipais.")
 
@@ -931,7 +931,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                             alt.Tooltip('count', title='Empresas', format=',d')
                         ]
                     ).properties(height=300, title='Resiliência de Mercado')
-                    st.altair_chart(chart_maturity, use_container_width=True)
+                    st.altair_chart(chart_maturity, width="stretch")
                     
                     # Insight
                     if not df_maturity.empty:
@@ -964,7 +964,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                             alt.Tooltip('count', title='Empresas', format=',d')
                         ]
                     ).properties(height=300, title='Estrutura Corporativa')
-                    st.altair_chart(chart_nature, use_container_width=True)
+                    st.altair_chart(chart_nature, width="stretch")
                     
                     # Insight
                     if not df_nature.empty:

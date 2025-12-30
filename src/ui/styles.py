@@ -43,10 +43,8 @@ def get_custom_css():
         box-shadow: 2px 0 8px rgba(0,0,0,0.04);
     }
 
-    /* Hide collapse button (Lock Sidebar Open) */
-    [data-testid="stSidebarCollapseButton"] {
-        display: none;
-    }
+    /* Sidebar collapse button enabled */
+
     
     /* Headers & Footer Containers */
     .sidebar-header-container {

@@ -77,7 +77,7 @@ def render_proposal_view(db: CNPJDatabase, filters: dict):
             tooltip=['date:T', 'count']
         ).properties(height=300)
         
-        st.altair_chart(chart_evol, use_container_width=True)
+        st.altair_chart(chart_evol, width="stretch")
         st.caption("Nota: A data de abertura reflete o registro, podendo anteceder o início da produção.")
     else:
         st.warning("Sem dados de evolução temporal.")
@@ -100,7 +100,7 @@ def render_proposal_view(db: CNPJDatabase, filters: dict):
             tooltip=['uf', 'count']
         ).properties(height=400)
         
-        st.altair_chart(chart_map_bar, use_container_width=True)
+        st.altair_chart(chart_map_bar, width="stretch")
         st.caption("A localização refere-se ao endereço cadastral.")
     else:
         st.warning("Sem dados geográficos.")
@@ -136,7 +136,7 @@ def render_proposal_view(db: CNPJDatabase, filters: dict):
         tooltip=['Tipo', 'Qtd']
     ).properties(height=200)
     
-    st.altair_chart(chart_comp, use_container_width=True)
+    st.altair_chart(chart_comp, width="stretch")
     st.caption("Filiais = Proxy de Operação | Matrizes = Localização Administrativa")
     
     st.divider()
@@ -173,7 +173,7 @@ def render_proposal_view(db: CNPJDatabase, filters: dict):
                 tooltip=['date:T', 'Produção (IBGE)', 'Abertura (CNPJ)']
             ).properties(height=350)
             
-            st.altair_chart(scatter, use_container_width=True)
+            st.altair_chart(scatter, width="stretch")
             
             # Interpretação Table
             st.markdown("""
