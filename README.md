@@ -26,6 +26,9 @@ A plataforma opera em 3 camadas complementares:
 - **Quem são os players?** Mapeamento completo de indústrias ativas.
 - **Market Share:** Concentração por setor (CNAE) e região (UF/Município).
 - **Solidez:** Análise de Capital Social médio e porte das empresas.
+- **Perfil Qualitativo (NOVO):**
+    - **Maturidade:** Distribuição por idade (Novas, Jovens, Consolidadas, Veteranas)
+    - **Sofisticação:** Análise de natureza jurídica (LTDA vs S.A.) com insights automáticos
 - **Detalhe:** Lista granular de empresas com Situação Cadastral e Data de Abertura.
 
 ### 2. Atividade Industrial (Macroeconomia)
@@ -36,6 +39,7 @@ A plataforma opera em 3 camadas complementares:
     - Índice Base Fixa (Nível e Sazonal)
     - Variação Mensal (Ritmo)
     - Acumulado 12 Meses (Tendência Estrutural)
+- **Filtro Temporal (NOVO):** Analise períodos específicos (Todo Histórico, Últimos 24 Meses, ou Anos Individuais).
 - **Máquina do Tempo:** Seletor histórico para analisar dados de qualquer mês nos últimos 10 anos.
 
 ### 3. Dinâmica Estratégica (Correlação)
@@ -87,6 +91,52 @@ Para acessar o Data Warehouse, você precisa de uma chave de conta de serviço:
 ```bash
 streamlit run app.py
 ```
+
+---
+
+## Segurança e Boas Práticas
+
+### Proteção de Credenciais
+Este projeto foi configurado para **NUNCA** expor credenciais sensíveis:
+
+1. **`.gitignore` Robusto:** Exclui automaticamente:
+   - `service_account.json` (Chave GCP)
+   - `.env` e `.env.local`
+   - `.streamlit/secrets.toml`
+   - Todos os arquivos `*.json` (exceto configs de projeto)
+
+2. **Variáveis de Ambiente:** Use `.env.example` como template:
+   ```bash
+   cp .env.example .env
+   # Edite .env com suas credenciais reais
+   ```
+
+3. **Deploy em Produção (Streamlit Cloud):**
+   - **NÃO** faça upload do `service_account.json`
+   - Use o painel de **Secrets** do Streamlit Cloud:
+     ```toml
+     [gcp_service_account]
+     type = "service_account"
+     project_id = "seu-projeto"
+     private_key_id = "..."
+     private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+     client_email = "..."
+     client_id = "..."
+     auth_uri = "https://accounts.google.com/o/oauth2/auth"
+     token_uri = "https://oauth2.googleapis.com/token"
+     ```
+
+### Verificação Pré-Commit
+Antes de fazer push, sempre verifique:
+```bash
+# Certifique-se de que nenhum arquivo sensível será commitado
+git status
+git diff --cached
+
+# Verifique o .gitignore
+cat .gitignore | grep -E "(json|env|secret)"
+```
+
 ---
 
 ## Estrutura do Projeto

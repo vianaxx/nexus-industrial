@@ -507,3 +507,63 @@ class BigQueryDatabase:
                 "avg_cap": float(capital) if pd.notnull(capital) else 0.0
             }
         return {"count": 0, "avg_cap": 0.0}
+
+    def get_maturity_profile(self, **kwargs) -> pd.DataFrame:
+        """Returns the distribution of companies by age buckets."""
+        if not self.client: return pd.DataFrame()
+        params = []
+        where_clause = self._build_where_clause(params, **kwargs)
+        where_sql = f"WHERE {where_clause}" if where_clause else ""
+        
+        sql = f"""
+            WITH AgeData AS (
+                SELECT 
+                    DATE_DIFF(CURRENT_DATE(), PARSE_DATE('%Y%m%d', st.data_inicio_atividade), YEAR) as age_years
+                FROM `{self.dataset_id}.empresas` e
+                JOIN `{self.dataset_id}.estabelecimentos` st 
+                    ON e.cnpj_basico = st.cnpj_basico
+                LEFT JOIN `{self.dataset_id}.municipios` m ON st.municipio = m.codigo
+                {where_sql}
+            )
+            SELECT
+                CASE 
+                    WHEN age_years < 3 THEN '1. Novas Entrantes (< 3 anos)'
+                    WHEN age_years BETWEEN 3 AND 9 THEN '2. Jovens (3 a 9 anos)'
+                    WHEN age_years BETWEEN 10 AND 20 THEN '3. Consolidadas (10 a 20 anos)'
+                    ELSE '4. Veteranas (> 20 anos)'
+                END as category,
+                count(*) as count
+            FROM AgeData
+            GROUP BY category
+            ORDER BY category
+        """
+        job_config = bigquery.QueryJobConfig(query_parameters=params)
+        return self.client.query(sql, job_config=job_config).to_dataframe()
+
+    def get_legal_nature_profile(self, **kwargs) -> pd.DataFrame:
+        """Returns the distribution of companies by legal nature bucket."""
+        if not self.client: return pd.DataFrame()
+        params = []
+        where_clause = self._build_where_clause(params, **kwargs)
+        where_sql = f"WHERE {where_clause}" if where_clause else ""
+        
+        sql = f"""
+            SELECT 
+                CASE 
+                    WHEN e.natureza_juridica LIKE '206-%' THEN 'Sociedade Limitada (LTDA)'
+                    WHEN e.natureza_juridica LIKE '204-%' OR e.natureza_juridica LIKE '205-%' THEN 'S.A. (Aberta/Fechada)'
+                    WHEN e.natureza_juridica LIKE '213-%' THEN 'Empresário Individual'
+                    WHEN e.natureza_juridica LIKE '230-%' OR e.natureza_juridica LIKE '231-%' THEN 'Empresa Pública/MEI'
+                    ELSE 'Outros'
+                END as category,
+                count(*) as count
+            FROM `{self.dataset_id}.empresas` e
+            JOIN `{self.dataset_id}.estabelecimentos` st 
+                ON e.cnpj_basico = st.cnpj_basico
+            LEFT JOIN `{self.dataset_id}.municipios` m ON st.municipio = m.codigo
+            {where_sql}
+            GROUP BY category
+            ORDER BY count DESC
+        """
+        job_config = bigquery.QueryJobConfig(query_parameters=params)
+        return self.client.query(sql, job_config=job_config).to_dataframe()

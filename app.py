@@ -9,7 +9,9 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from src.config import PAGE_TITLE, PAGE_ICON, LAYOUT, STATUS_FILE
 from src.database import get_database
 from src.ui.dashboard import (
-    render_sidebar_filters,
+    render_structure_filters,
+    render_macro_filters,
+    render_strategy_filters,
     render_strategic_view, 
     render_macro_view, 
     render_market_intelligence_view
@@ -37,59 +39,71 @@ def main():
         st.error(f"Database Initialization Error: {e}")
         st.stop()
         
-    # --- SHARED SIDEBAR CONTENT (Top) ---
+    # --- PAGE DEFINITIONS ---
+    def page_structure():
+       # st.header("1. Estrutura de Mercado")
+        st.markdown("---")
+        filters = render_structure_filters(db)
+        render_market_intelligence_view(db, filters)
+
+    def page_macro():
+       # st.header("2. Atividade Industrial")
+        st.markdown("---")
+        filters = render_macro_filters(db)
+        render_macro_view(filters)
+
+    def page_strategy():
+       # st.header("3. Dinâmica Estratégica")
+        st.markdown("---")
+        filters = render_strategy_filters(db)
+        render_strategic_view(db, filters)
+
+    # --- PAGES SETUP ---
+    pg_struct = st.Page(page_structure, title="Estrutura de Mercado", icon=":material/domain:")
+    pg_macro = st.Page(page_macro, title="Atividade Industrial", icon=":material/factory:")
+    pg_strat = st.Page(page_strategy, title="Dinâmica Estratégica", icon=":material/hub:")
+
+    # --- SIDEBAR STRUCTURE (Manual Control) ---
     with st.sidebar:
-        st.title(PAGE_TITLE)
-        
-        # Scope Definition
-        with st.expander("Escopo & Metodologia", expanded=False):
-            st.markdown("""
-            **Nexus Industrial Brasil**
-            
-            **Foco:** Indústrias Extrativas e de Transformação (CNAE Seções B e C).
-            
-            **Metodologia Híbrida:**
-            1.  **Micro (Receita Federal):** CNPJ como *proxy* de investimento.
-            2.  **Macro (IBGE):** Produção Física Oficial.
-            """)
-        
-        # Get Filter Dict (Global) - DEFINED HERE
-        filters = render_sidebar_filters(db) 
+        # 1. HEADER (Brand)
+        st.markdown("""
+        <div class="sidebar-header-container">
+            <div class="sidebar-title">NEXUS INDUSTRIAL</div>
+            <div class="sidebar-subtitle">
+                <span style="background-color: #e0f2fe; color: #0369a1; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">BETA</span>
+                <span style="margin-left: 8px;">Intelligence Suite</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         
         st.divider()
-        st.caption(f"v2.3 | {PAGE_TITLE}")
 
-    # --- SHARED MAIN CONTENT (Search) ---
-    st.markdown("## Busca Global")
-    col_search, col_btn = st.columns([4, 1])
-    with col_search:
-        search_query = st.text_input("Buscar Empresa ou CNPJ", placeholder="Ex: PETROBRAS, 33.000.167...", label_visibility="collapsed")
-    with col_btn:
-        start_btn = st.button("Pesquisar", type="primary", use_container_width=True)
-    
-    # Update filters with search term (Found 'filters' correctly now)
-    if search_query:
-        filters['search_term'] = search_query.strip()
-    else:
-        filters['search_term'] = None
 
-    # Apps Tabs: Structure -> Activity -> Dynamics
-    tab1, tab2, tab3 = st.tabs([
-        "1. Estrutura (Mercado)", 
-        "2. Atividade (Macro)", 
-        "3. Dinâmica (Estratégia)"
-    ])
-    
-    # 1. Structure (Who exists?) - DEFAULT LANDING
-    with tab1:
-        render_market_intelligence_view(db, filters)
-    
-    # 2. Activity (What is produced?)
-    with tab2:
-        render_macro_view(filters)
+        # 2. NAVIGATION (Custom Links using Page Objects)
+        st.page_link(pg_struct, label="Estrutura de Mercado", icon=":material/domain:")
+        st.page_link(pg_macro, label="Atividade Industrial", icon=":material/factory:")
+        st.page_link(pg_strat, label="Dinâmica Estratégica", icon=":material/hub:")
         
-    with tab3:
-        render_strategic_view(db, filters)
+    # --- NAVIGATION ROUTER (Hidden) ---
+    pg = st.navigation([pg_struct, pg_macro, pg_strat], position="hidden")
+    
+    pg.run()
+
+    # --- SIDEBAR FOOTER (Fixed at Bottom via Layout Order) ---
+    with st.sidebar:
+
+        st.markdown("""
+        <div class="sidebar-footer-container">
+            <div style="font-size: 0.8rem; color: #64748b;">
+                <b>Fontes de Dados:</b><br>
+                • Receita Federal (CNPJ)<br>
+                • IBGE (PIM-PF)
+            </div>
+            <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 8px;">
+                © 2024 Nexus Intelligence
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     # Global Footer
     render_footer()
