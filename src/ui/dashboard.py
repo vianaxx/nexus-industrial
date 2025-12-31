@@ -1044,7 +1044,8 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                 width="stretch",
                 column_order=[
                     "cnpj_real", 
-                    "razao_social", 
+                    "razao_social",
+                    "tipo_label", 
                     "Status",
                     "Data Abertura",
                     "Porte",
@@ -1058,7 +1059,9 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                 column_config={
                     "cnpj_real": st.column_config.TextColumn("CNPJ", width="medium"),
                     "razao_social": st.column_config.TextColumn("Razão Social / Nome Empresarial", width="large"),
+                    "tipo_label": st.column_config.TextColumn("Tipo", width="small"),
                     "Status": st.column_config.TextColumn("Situação", width="small"),
+
                     "Data Abertura": st.column_config.TextColumn("Início Ativ.", width="small"),
                     "Porte": st.column_config.TextColumn("Porte", width="small"),
                     "Capital (R$)": st.column_config.TextColumn("Capital Social", width="medium"),
