@@ -1,6 +1,8 @@
 import requests
 import pandas as pd
 import streamlit as st
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 BASE_URL = "https://servicodados.ibge.gov.br/api/v3/agregados/8888"
 VARIABLES = "12606,12607,11601,11602,11603,11604"
 CNAE_TO_IBGE_MAP = {
@@ -18,7 +20,18 @@ def fetch_industry_data(sector_code=None):
         class_id = CNAE_TO_IBGE_MAP.get(clean_code, '129314')
     url = f"{BASE_URL}/periodos/-120/variaveis/{VARIABLES}?localidades=N1[all]|N3[all]&classificacao=544[{class_id}]"
     try:
-        response = requests.get(url, timeout=30)
+        # Configuration for Robust Request
+        session = requests.Session()
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+
+        response = session.get(url, timeout=60)
         response.raise_for_status()
         data = response.json()
         rows = []
