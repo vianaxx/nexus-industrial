@@ -67,7 +67,7 @@ O projeto utiliza uma arquitetura híbrida de alta performance:
 
 ### 1. Clone o Repositório
 ```bash
-git clone [https://github.com/seu-repositorio/nexus-industrial.git](https://github.com/vianaxx/nexus-industrial.git)
+git clone (https://github.com/vianaxx/nexus-industrial.git)
 cd nexus-industrial
 ```
 
@@ -91,52 +91,6 @@ Para acessar o Data Warehouse, você precisa de uma chave de conta de serviço:
 ```bash
 streamlit run app.py
 ```
-
----
-
-## Segurança e Boas Práticas
-
-### Proteção de Credenciais
-Este projeto foi configurado para **NUNCA** expor credenciais sensíveis:
-
-1. **`.gitignore` Robusto:** Exclui automaticamente:
-   - `service_account.json` (Chave GCP)
-   - `.env` e `.env.local`
-   - `.streamlit/secrets.toml`
-   - Todos os arquivos `*.json` (exceto configs de projeto)
-
-2. **Variáveis de Ambiente:** Use `.env.example` como template:
-   ```bash
-   cp .env.example .env
-   # Edite .env com suas credenciais reais
-   ```
-
-3. **Deploy em Produção (Streamlit Cloud):**
-   - **NÃO** faça upload do `service_account.json`
-   - Use o painel de **Secrets** do Streamlit Cloud:
-     ```toml
-     [gcp_service_account]
-     type = "service_account"
-     project_id = "seu-projeto"
-     private_key_id = "..."
-     private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-     client_email = "..."
-     client_id = "..."
-     auth_uri = "https://accounts.google.com/o/oauth2/auth"
-     token_uri = "https://oauth2.googleapis.com/token"
-     ```
-
-### Verificação Pré-Commit
-Antes de fazer push, sempre verifique:
-```bash
-# Certifique-se de que nenhum arquivo sensível será commitado
-git status
-git diff --cached
-
-# Verifique o .gitignore
-cat .gitignore | grep -E "(json|env|secret)"
-```
-
 ---
 
 ## Estrutura do Projeto
