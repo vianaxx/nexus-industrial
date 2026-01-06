@@ -68,6 +68,13 @@ def _render_common_geo_activity(db: CNPJDatabase, key_suffix: str):
             ui_sectors = st.multiselect("Setores (CNAE)", sec_opts, placeholder="Todos os Setores", key=f"sec_{key_suffix}")
             sel_sectors = [s.split(" - ")[0] for s in ui_sectors]
 
+            # DATA QUERY CONNECTION: 
+            # If Macro Filter is active (Transformation/Extractive) but no specific Sector is clicked,
+            # we must explicitly pass ALL sectors of that group.
+            # Otherwise, passing [] causes the backend to fetch EVERYTHING (ignoring the macro group).
+            if not sel_sectors and ("Transformação" in sel_macro or "Extrativa" in sel_macro):
+                sel_sectors = df_sectors['division_code'].tolist()
+
     return sel_ufs, sel_city_codes, sel_sectors
 
 def render_structure_filters(db: CNPJDatabase) -> dict:
