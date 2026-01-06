@@ -233,18 +233,7 @@ def render_structure_filters(db: CNPJDatabase) -> dict:
         "search_term": search_query.strip() if search_query else None
     }
 
-def render_market_intelligence_view(db: CNPJDatabase, filters):
-    """
-    Landing Page: Market Structure Analysis (Detailed).
-    """
-    # Dynamic Description
-    summary_text = generate_structural_summary("struct")
-    st.info(summary_text, icon="ℹ️")
 
-    # Unpack Filters (Dictionary)
-    sel_ufs = filters.get("ufs", [])
-    sel_city_codes = filters.get("municipio_codes", [])
-    sel_sectors = filters.get("sectors", [])
 
 def render_macro_filters(db: CNPJDatabase) -> dict:
     """Filters for 'Atividade Macro' (Focus on Geo/Sector)."""
@@ -882,7 +871,9 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
     st.info(summary_text, icon="ℹ️")
 
     # Unpack Filters
-    sel_ufs, sel_city_codes, sel_sectors = filters["ufs"], filters["city_codes"], filters["sectors"]
+    sel_ufs = filters.get("ufs", [])
+    sel_city_codes = filters.get("municipio_codes", [])
+    sel_sectors = filters.get("sectors", [])
     
     # CSS: Card Style for Metrics
     st.markdown("""
