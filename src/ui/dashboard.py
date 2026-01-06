@@ -38,6 +38,22 @@ def _render_common_geo_activity(db: CNPJDatabase, key_suffix: str):
         df_sectors = get_options_cached(db, 'get_industrial_divisions')
         sel_sectors = []
         if not df_sectors.empty:
+            # REVERSE DEPENDENCY: If specific subclasses are selected (in Structure page), 
+            # we restrict the Sector options to match those subclasses.
+            if key_suffix == "struct":
+                downstream_subs = st.session_state.get('f_cnae_specific', [])
+                if downstream_subs:
+                    # Extract "10" from "10.41..."
+                    valid_prefixes = set()
+                    for item in downstream_subs:
+                        # Item format: "10.41-X/XX - Desc"
+                        # Simply take first 2 chars
+                        if len(item) >= 2 and item[:2].isdigit():
+                            valid_prefixes.add(item[:2])
+                    
+                    if valid_prefixes:
+                        df_sectors = df_sectors[df_sectors['division_code'].isin(valid_prefixes)]
+
             sec_opts = df_sectors['label'].tolist()
             ui_sectors = st.multiselect("Setores (CNAE)", sec_opts, placeholder="Todos os Setores", key=f"sec_{key_suffix}")
             sel_sectors = [s.split(" - ")[0] for s in ui_sectors]
@@ -64,6 +80,15 @@ def render_structure_filters(db: CNPJDatabase) -> dict:
         df_cnae_all = get_options_cached(db, 'get_all_cnaes')
         
         if not df_cnae_all.empty:
+            # SCOPE ENFORCEMENT: Only Industrial Activities (Divisions 05-33)
+            # This filters out Agriculture (01-03), Services, Trade, etc.
+            try:
+                df_cnae_all = df_cnae_all[
+                    pd.to_numeric(df_cnae_all['codigo'].str.slice(0, 2), errors='coerce').fillna(0).astype(int).between(5, 33)
+                ]
+            except Exception:
+                pass # Fail gracefully if codes are malformed
+
             # Dependency: Filter options based on selected Sectors (if any)
             if sel_sectors:
                 # Filter codes starting with the 2-digit sector code
