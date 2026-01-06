@@ -4,6 +4,7 @@ import altair as alt
 from ..database import CNPJDatabase
 from ..utils import format_cnpj, format_currency, format_date, get_status_description, format_cnae
 from ..ibge import fetch_industry_data, get_latest_metrics
+from ..classification import get_industrial_typology, get_divisions_for_typology, get_divisions_for_value_chain
 
 @st.cache_data
 def get_options_cached(_db, method_name):
@@ -39,14 +40,39 @@ def _render_common_geo_activity(db: CNPJDatabase, key_suffix: str):
         macro_opts = ["Todos", "Ind. Transformação (10-33)", "Ind. Extrativa (05-09)"]
         sel_macro = st.selectbox("Grande Grupo Industrial", macro_opts, key=f"macro_{key_suffix}")
 
+        # Level 1: Typology & Value Chain
+        c_p1, c_p2 = st.columns(2)
+        with c_p1:
+            opts_typ = ["Todas", "Indústria Extrativa", "Indústria de Base", "Indústria Intermediária", "Bens de Capital", "Bens de Consumo Duráveis", "Bens de Consumo Não Duráveis"]
+            sel_typology = st.selectbox("Tipologia (Nível 1)", opts_typ, key=f"typ_{key_suffix}")
+        with c_p2:
+            opts_chain = ["Todas", "Upstream", "Midstream", "Downstream"]
+            sel_chain = st.selectbox("Cadeia de Valor", opts_chain, key=f"chain_{key_suffix}")
+
         df_sectors = get_options_cached(db, 'get_industrial_divisions')
         sel_sectors = []
         if not df_sectors.empty:
-            # 1. Apply Macro Filter
+            # 1. Apply Intersecting Filters
+            # Start with all divs present in db
+            current_divs = pd.to_numeric(df_sectors['division_code']).astype(int).tolist()
+            allowed_divs = set(current_divs)
+            
+            # A. Macro
             if "Transformação" in sel_macro:
-                df_sectors = df_sectors[pd.to_numeric(df_sectors['division_code']).between(10, 33)]
+                allowed_divs &= set(range(10, 34))
             elif "Extrativa" in sel_macro:
-                df_sectors = df_sectors[pd.to_numeric(df_sectors['division_code']).between(5, 9)]
+                allowed_divs &= set(range(5, 10))
+            
+            # B. Typology
+            if sel_typology != "Todas":
+                allowed_divs &= set(get_divisions_for_typology(sel_typology))
+                
+            # C. Chain
+            if sel_chain != "Todas":
+                allowed_divs &= set(get_divisions_for_value_chain(sel_chain))
+            
+            # Apply Filter to DataFrame
+            df_sectors = df_sectors[pd.to_numeric(df_sectors['division_code']).isin(allowed_divs)]
 
             # 2. REVERSE DEPENDENCY: If specific subclasses are selected (in Structure page), 
             # we restrict the Sector options to match those subclasses.
@@ -72,7 +98,13 @@ def _render_common_geo_activity(db: CNPJDatabase, key_suffix: str):
             # If Macro Filter is active (Transformation/Extractive) but no specific Sector is clicked,
             # we must explicitly pass ALL sectors of that group.
             # Otherwise, passing [] causes the backend to fetch EVERYTHING (ignoring the macro group).
-            if not sel_sectors and ("Transformação" in sel_macro or "Extrativa" in sel_macro):
+            # DATA QUERY CONNECTION: 
+            # If Filters are active (Macro/Typology/Chain) but no specific Sector is clicked,
+            # we must explicitly pass ALL allowed sectors.
+            # Otherwise, query receives [] (All) which ignores the filters.
+            filters_active = ("Transformação" in sel_macro or "Extrativa" in sel_macro) or (sel_typology != "Todas") or (sel_chain != "Todas")
+            
+            if not sel_sectors and filters_active:
                 sel_sectors = df_sectors['division_code'].tolist()
 
     return sel_ufs, sel_city_codes, sel_sectors
@@ -1118,8 +1150,17 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                     lambda x: f"{format_cnae(x.get('cnae_fiscal_principal', ''))} - {x.get('cnae_desc', '')}", 
                     axis=1
                 )
+                
+                # Enrich Typology (Level 1 Analysis)
+                # Apply classification to each row based on CNAE
+                typ_series = df_disp['cnae_fiscal_principal'].fillna('').apply(get_industrial_typology)
+                df_disp['Tipo Indústria'] = typ_series.apply(lambda x: x['tipo_industria'])
+                df_disp['Posição Cadeia'] = typ_series.apply(lambda x: x['cadeia_valor'])
+
             else:
                  df_disp['Subclasse'] = df_disp.get('cnae_desc', '-')
+                 df_disp['Tipo Indústria'] = '-'
+                 df_disp['Posição Cadeia'] = '-'
 
             st.dataframe(
                 df_disp,
@@ -1136,6 +1177,8 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                     "Cidade/UF",
                     "natureza_desc", 
                     "Subclasse",
+                    "Tipo Indústria",
+                    "Posição Cadeia",
                     "Endereço",
                     "Contato"
                 ],
@@ -1151,6 +1194,8 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                     "Cidade/UF": st.column_config.TextColumn("Localização", width="medium"),
                     "natureza_desc": st.column_config.TextColumn("Natureza Jurídica", width="medium"),
                     "Subclasse": st.column_config.TextColumn("Atividade (Subclasse CNAE)", width="large"),
+                    "Tipo Indústria": st.column_config.TextColumn("Tipologia (Nível 1)", width="medium"),
+                    "Posição Cadeia": st.column_config.TextColumn("Cadeia de Valor", width="small"),
                     "Endereço": st.column_config.TextColumn("Endereço Completo", width="large"),
                     "Contato": st.column_config.TextColumn("Contatos", width="medium"),
                 },
