@@ -35,10 +35,20 @@ def _render_common_geo_activity(db: CNPJDatabase, key_suffix: str):
                 sel_city_codes = df_muni[df_muni['descricao'].isin(sel_city_names)]['codigo'].tolist()
     
     with c3:
+        # Macro Segmentation (Extractive vs Transformation)
+        macro_opts = ["Todos", "Ind. Transformação (10-33)", "Ind. Extrativa (05-09)"]
+        sel_macro = st.selectbox("Grande Grupo Industrial", macro_opts, key=f"macro_{key_suffix}")
+
         df_sectors = get_options_cached(db, 'get_industrial_divisions')
         sel_sectors = []
         if not df_sectors.empty:
-            # REVERSE DEPENDENCY: If specific subclasses are selected (in Structure page), 
+            # 1. Apply Macro Filter
+            if "Transformação" in sel_macro:
+                df_sectors = df_sectors[pd.to_numeric(df_sectors['division_code']).between(10, 33)]
+            elif "Extrativa" in sel_macro:
+                df_sectors = df_sectors[pd.to_numeric(df_sectors['division_code']).between(5, 9)]
+
+            # 2. REVERSE DEPENDENCY: If specific subclasses are selected (in Structure page), 
             # we restrict the Sector options to match those subclasses.
             if key_suffix == "struct":
                 downstream_subs = st.session_state.get('f_cnae_specific', [])
