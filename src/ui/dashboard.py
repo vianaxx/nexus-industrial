@@ -131,36 +131,14 @@ def _render_common_geo_activity(db: CNPJDatabase, key_suffix: str):
             allowed_divs &= set(get_divisions_for_value_chain(sel_chain))
             
         # Filter Hierarchy DF
-        df_filtered = df_hier[df_hier['divisao_code'].isin(allowed_divs)]
+        # df_filtered = df_hier[df_hier['divisao_code'].isin(allowed_divs)]
         
-        # --- HIERARCHY LAYOUT (3 Columns) ---
-        st.markdown("##### Detalhamento Setorial (CNAE)")
-        c_h1, c_h2, c_h3 = st.columns(3)
+        # --- FILTROS DE CNAE DESCARTADOS (SOLICITAÇÃO USUÁRIO) ---
+        # A lógica abaixo garante que, mesmo sem o widget visual, 
+        # o sistema selecione todos os setores válidos para o escopo definido.
+        sel_divs = list(allowed_divs)
         
-        # B. Level 1: Division
-        with c_h1:
-            div_opts = sorted(df_filtered['div_label'].unique().tolist())
-            sel_div_labels = st.multiselect("1. Divisão (Setor)", div_opts, placeholder="Todos", key=f"div_{key_suffix}")
-            if sel_div_labels:
-                sel_divs = [s.split(" - ")[0] for s in sel_div_labels]
-                df_filtered = df_filtered[df_filtered['divisao_code'].isin(sel_divs)]
-        
-        # C. Level 2: Group
-        with c_h2:
-            grp_opts = sorted(df_filtered['grp_label'].unique().tolist())
-            sel_grp_labels = st.multiselect("2. Grupo", grp_opts, placeholder="Todos", key=f"grp_{key_suffix}")
-            if sel_grp_labels:
-                sel_groups_dirty = [s.split(" - ")[0] for s in sel_grp_labels]
-                sel_groups = [g.replace(".", "") for g in sel_groups_dirty]
-                df_filtered = df_filtered[df_filtered['grupo_code'].astype(str).isin(sel_groups_dirty)]
-            
-        # D. Level 3: Class
-        with c_h3:
-            cls_opts = sorted(df_filtered['cls_label'].unique().tolist())
-            sel_cls_labels = st.multiselect("3. Classe", cls_opts, placeholder="Todas", key=f"cls_{key_suffix}")
-            if sel_cls_labels:
-                 sel_classes_dirty = [s.split(" - ")[0] for s in sel_cls_labels]
-                 sel_classes = [c.replace(".", "").replace("-", "") for c in sel_classes_dirty]
+        # Widgets removidos: Divisão, Grupo, Classe.
              
     # Clean up empty lists to None/Empty
     
@@ -185,72 +163,9 @@ def render_structure_filters(db: CNPJDatabase) -> dict:
         sel_cnaes = []
         df_cnae_all = get_options_cached(db, 'get_all_cnaes')
         
-        if not df_cnae_all.empty:
-            # SCOPE ENFORCEMENT
-            try:
-                df_cnae_all = df_cnae_all[
-                    pd.to_numeric(df_cnae_all['codigo'].str.slice(0, 2), errors='coerce').fillna(0).astype(int).between(5, 33)
-                ]
-            except: pass
-
-            # Filter dependent on Class/Group/Sector
-            # Precedence: Class > Group > Sector
-            filters_cnae_active = False
-            
-            if sel_classes:
-                # Filter by Class Prefix (5 chars? No DB has 7 digits formatted. "10.11-3" -> slice(0,7))
-                # Wait, "10.41-4" is Class code.
-                # DB format: "1011-3/01".
-                # Standardize?
-                # Best way: Filter using clean codes logic if possible
-                pass 
-                # Let's rely on simple string matching
-                valid_prefixes = [c[:5] for c in sel_classes] # 5 chars from clean class? No.
-                # sel_classes is CLEAN "10113".
-                # DB 'codigo': "1011-3/01".
-                # Clean DB code: "1011301".
-                # Match starts with.
-                filters_cnae_active = True
-                
-                # Apply filter locally to DF
-                # We need to clean DF codes for comparison or format input
-                # Let's clean DB codes temporarily
-                df_codes = df_cnae_all['codigo'].str.replace(r'[^0-9]', '', regex=True)
-                mask = df_codes.str.slice(0, 5).isin(sel_classes)
-                df_cnae_all = df_cnae_all[mask]
-
-            elif sel_groups:
-                 filters_cnae_active = True
-                 # sel_groups is CLEAN "101".
-                 df_codes = df_cnae_all['codigo'].str.replace(r'[^0-9]', '', regex=True)
-                 mask = df_codes.str.slice(0, 3).isin(sel_groups)
-                 df_cnae_all = df_cnae_all[mask]
-
-            elif sel_sectors:
-                 filters_cnae_active = True
-                 # sel_sectors is CLEAN "10".
-                 df_codes = df_cnae_all['codigo'].str.replace(r'[^0-9]', '', regex=True)
-                 mask = df_codes.str.slice(0, 2).isin(sel_sectors)
-                 df_cnae_all = df_cnae_all[mask]
-
-            # Formatting
-            cnae_opts = df_cnae_all.apply(
-                lambda x: f"{format_cnae(x['codigo'])} - {x['descricao']}", 
-                axis=1
-            ).tolist()
-            
-            sel_cnaes_ui = st.multiselect(
-                "4. Subclasse (Atividade Específica)", 
-                cnae_opts, 
-                placeholder="Selecione (Limitado pelo filtro acima)", 
-                key='f_cnae_specific',
-                disabled=False
-            )
-            
-            if sel_cnaes_ui:
-                sel_cnaes = [c.split(" - ")[0].replace(".", "").replace("-", "").replace("/", "") for c in sel_cnaes_ui]
-        else:
-            st.warning("Lista de CNAEs indisponível.")
+        # 1.1 CNAE Specific REMOVED
+        sel_cnaes = []
+        # (Código de filtro de subclasse removido conforme solicitação)
 
         st.divider()
         
