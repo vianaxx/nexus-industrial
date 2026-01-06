@@ -45,6 +45,6 @@ if GCP_CREDENTIALS_JSON and (GCP_PROJECT_ID == "seu-projeto-id" or not GCP_PROJE
     except Exception:
         pass
 PAGE_TITLE = "Nexus Industrial Brasil"
-PAGE_ICON = str(DATA_DIR / "assets" / "logo.jpg")
+PAGE_ICON = str(DATA_DIR / "assets" / "sidebar_icon.png")
 LAYOUT = "wide"
 PROJECT_SCOPE_ONLY = True

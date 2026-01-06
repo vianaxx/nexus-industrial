@@ -412,6 +412,9 @@ UF_NAMES = {
     'RO': 'Rondônia', 'RR': 'Roraima', 'SC': 'Santa Catarina', 'SP': 'São Paulo',
     'SE': 'Sergipe', 'TO': 'Tocantins'
 }
+NAME_TO_UF = {v: k for k, v in UF_NAMES.items()}
+NAME_TO_UF['Brasil'] = None # Special case
+
 
 def render_educational_guide():
     with st.expander("Guia de Leitura: Entenda os Indicadores (SIDRA/IBGE)", expanded=False):
@@ -749,36 +752,69 @@ def render_macro_view(filters=None):
                 if mom_key in df_pivot.columns and acc12_key in df_pivot.columns:
                     c_scat, c_rank = st.columns([3, 2])
                     
+                    # CROSS-FILTERING SELECTION
+                    click_sel = alt.selection_point(fields=['location'], name='select_loc')
+                    
                     with c_scat:
                         st.markdown("#### Mapa de Ciclo Econômico")
-                        st.caption(f"Posicionamento dos Estados/Regiões em {latest_date_all.strftime('%m/%Y')}")
+                        st.caption(f"Posicionamento dos Estados/Regiões em {latest_date_all.strftime('%m/%Y')} (Clique para Filtrar)")
                         
-                        base_scat = alt.Chart(df_pivot).mark_circle(size=150, opacity=0.9).encode(
+                        base_scat = alt.Chart(df_pivot).mark_circle(size=150, opacity=0.9).add_params(click_sel).encode(
                             x=alt.X(acc12_key, title='Tendência (Acum. 12m %)', axis=alt.Axis(grid=False)),
                             y=alt.Y(mom_key, title='Ritmo (Var. Mensal %)', axis=alt.Axis(grid=False)),
-                            color=alt.condition(alt.datum.location == actual_loc, alt.value('#d62728'), alt.value('#cbd5e1')),
+                            color=alt.condition(click_sel, 
+                                                alt.condition(alt.datum.location == actual_loc, alt.value('#d62728'), alt.value('#3b82f6')),
+                                                alt.value('lightgray')), # Dim unselected
                             tooltip=[alt.Tooltip('location'), alt.Tooltip(acc12_key, format='.2f'), alt.Tooltip(mom_key, format='.2f')]
                         ).properties(height=400)
                         
-                        text_scat = base_scat.mark_text(align='left', dx=10, fontSize=11, fontWeight=600).encode(text='location', color=alt.value('#334155'))
+                        text_scat = base_scat.mark_text(align='left', dx=10, fontSize=11, fontWeight=600).encode(
+                            text='location', 
+                            color=alt.value('#334155'),
+                            opacity=alt.condition(click_sel, alt.value(1), alt.value(0.1))
+                        )
                         
                         rule_x = alt.Chart(pd.DataFrame({'x': [0]})).mark_rule(color='#94a3b8', strokeDash=[5,5]).encode(x='x')
                         rule_y = alt.Chart(pd.DataFrame({'y': [0]})).mark_rule(color='#94a3b8', strokeDash=[5,5]).encode(y='y')
                         
-                        st.altair_chart((base_scat + text_scat + rule_x + rule_y).interactive(), width="stretch")
+                        # RENDER WITH INTERACTION
+                        scatter_event = st.altair_chart((base_scat + text_scat + rule_x + rule_y).interactive(), width="stretch", on_select="rerun", key="macro_scatter")
                         
                     with c_rank:
                         st.markdown("#### Ranking de Desempenho (12m)")
                         st.caption("Quem está crescendo mais?")
                         
-                        rank_chart = alt.Chart(df_pivot).mark_bar().encode(
+                        rank_chart = alt.Chart(df_pivot).mark_bar().add_params(click_sel).encode(
                             x=alt.X(acc12_key, title='%', axis=alt.Axis(grid=False)),
                             y=alt.Y('location', sort='-x', title=None),
-                            color=alt.condition(alt.datum.location == actual_loc, alt.value('#d62728'), alt.value('#3b82f6')),
+                            color=alt.condition(click_sel, 
+                                                alt.condition(alt.datum.location == actual_loc, alt.value('#d62728'), alt.value('#3b82f6')),
+                                                alt.value('lightgray')),
                             tooltip=[alt.Tooltip('location'), alt.Tooltip(acc12_key, format='.2f')]
                         ).properties(height=400)
                         
-                        st.altair_chart(rank_chart, width="stretch")
+                        # RENDER WITH INTERACTION
+                        rank_event = st.altair_chart(rank_chart, width="stretch", on_select="rerun", key="macro_rank")
+
+                    # --- HANDLE SELECTION EVENTS ---
+                    # Check which chart triggered the event
+                    selected_loc = None
+                    
+                    if scatter_event.selection.get('select_loc'):
+                        selected_loc = scatter_event.selection['select_loc'][0]['location']
+                    elif rank_event.selection.get('select_loc'):
+                        selected_loc = rank_event.selection['select_loc'][0]['location']
+                        
+                    if selected_loc:
+                        # Map Location Name -> UF Code
+                        uf_code = NAME_TO_UF.get(selected_loc)
+                        if uf_code:
+                            # Update Session State Filter
+                            # We replace the current selection with the clicked one for drill-down behavior
+                            # Or toggle? Let's use replacement for now (Focus behavior)
+                            st.session_state['ufs_macro'] = [uf_code]
+                            st.rerun()
+                            
                 else:
                     st.info("Dados insuficientes para gerar o Mapa de Ciclo (Scatter).")
         else:
@@ -952,6 +988,69 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
             k3.metric("Setor Líder", leader_name, "Maior Volume")
             k4.metric("Concentração", f"{concentration:.1f}%", "Share do Top 1")
             
+            st.markdown("---")
+            
+            # --- SECTION 1.5: DISTRIBUTION & INTERACTIVITY (Bidirectional) ---
+            st.markdown("##### Distribuição da Base (Clique para Filtrar)")
+            
+            c_g, c_s = st.columns(2)
+            
+            # Selectors
+            sel_uf_click = alt.selection_point(fields=['uf'], name='sel_uf')
+            sel_sec_click = alt.selection_point(fields=['sector_code'], name='sel_sec')
+            
+            with c_g:
+                # Geo Distribution
+                df_geo = db.get_geo_distribution(**mi_filters)
+                if not df_geo.empty:
+                    # Expecting 'uf' and 'count'
+                    chart_geo = alt.Chart(df_geo.head(10)).mark_bar().add_params(sel_uf_click).encode(
+                        x=alt.X('count:Q', title='Qtd', axis=alt.Axis(grid=False)),
+                        y=alt.Y('uf:N', sort='-x', title=None),
+                        color=alt.condition(sel_uf_click, alt.value('#2ecc71'), alt.value('lightgray')),
+                        tooltip=['uf', 'count']
+                    ).properties(height=250, title="Top Estados")
+                    
+                    geo_event = st.altair_chart(chart_geo, use_container_width=True, on_select="rerun", key="struct_geo")
+                else:
+                    st.info("Sem dados geográficos.")
+                    geo_event = None
+
+            with c_s:
+                # Sector Distribution (Already fetched in df_sectors)
+                if not df_sectors.empty:
+                    chart_sec = alt.Chart(df_sectors.head(10)).mark_bar().add_params(sel_sec_click).encode(
+                        x=alt.X('count:Q', title='Qtd', axis=alt.Axis(grid=False)),
+                        y=alt.Y('sector_code:N', sort='-x', title=None),
+                        color=alt.condition(sel_sec_click, alt.value('#9b59b6'), alt.value('lightgray')),
+                        tooltip=['sector_code', 'count']
+                    ).properties(height=250, title="Top Setores")
+                    
+                    sec_event = st.altair_chart(chart_sec, use_container_width=True, on_select="rerun", key="struct_sec")
+                else:
+                    st.info("Sem dados setoriais.")
+                    sec_event = None
+
+            # --- HANDLE INTERACTIONS ---
+            # 1. Geo Click
+            if geo_event and geo_event.selection.get('sel_uf'):
+                clicked_uf = geo_event.selection['sel_uf'][0]['uf']
+                st.session_state['ufs_struct'] = [clicked_uf]
+                st.rerun()
+
+            # 2. Sector Click
+            if sec_event and sec_event.selection.get('sel_sec'):
+                clicked_code = sec_event.selection['sel_sec'][0]['sector_code']
+                # Resolve Label for Widget (e.g. "10 - Alimentos")
+                 # Fetch Ref
+                df_ref = get_options_cached(db, 'get_industrial_divisions')
+                if not df_ref.empty:
+                    match = df_ref[df_ref['division_code'] == clicked_code]
+                    if not match.empty:
+                        clean_label = match.iloc[0]['label']
+                        st.session_state['sec_struct'] = [clean_label]
+                        st.rerun()
+
             st.markdown("---")
 
             # --- SECTION 2: LEADERSHIP (Podium + Chart) ---

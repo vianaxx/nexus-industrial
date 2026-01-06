@@ -86,7 +86,7 @@ def main():
         
         st.divider()
         
-        with st.expander("ℹ️ Escopo e Metodologia"):
+        with st.expander("Escopo e Metodologia"):
             st.markdown("""
             **Foco Industrial (Supply Side)**
             Monitoramos exclusivamente o núcleo produtivo nacional (CNAE 05-33):
