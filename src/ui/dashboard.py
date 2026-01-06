@@ -13,6 +13,47 @@ def get_options_cached(_db, method_name):
     except:
         return pd.DataFrame()
 
+def generate_structural_summary(key_suffix: str) -> str:
+    """Generates a text summary of the active filters."""
+    # 1. Geography
+    ufs = st.session_state.get(f"ufs_{key_suffix}", [])
+    cities = st.session_state.get(f"city_{key_suffix}", [])
+    
+    geo_text = "Nacional"
+    if cities:
+        geo_text = f"Local ({len(cities)} municípios)"
+    elif ufs:
+        geo_text = f"Regional ({', '.join(ufs)})"
+
+    # 2. Industry Scope
+    macro = st.session_state.get(f"macro_{key_suffix}", "Todos")
+    typ = st.session_state.get(f"typ_{key_suffix}", "Todas")
+    chain = st.session_state.get(f"chain_{key_suffix}", "Todas")
+    sectors = st.session_state.get(f"sec_{key_suffix}", [])
+    
+    scope_parts = []
+    
+    # Priority to specific sectors if selected
+    if sectors:
+        scope_parts.append(f"{len(sectors)} Setores Selecionados")
+    else:
+        # Otherwise describe the Strategy filters
+        if macro != "Todos":
+            scope_parts.append(macro)
+            
+        if typ != "Todas":
+            scope_parts.append(typ)
+            
+        if chain != "Todas":
+            scope_parts.append(f"Posição {chain}")
+            
+    if not scope_parts:
+        scope_text = "Complexo Industrial Completo (05-33)"
+    else:
+        scope_text = " • ".join(scope_parts)
+
+    return f"**Escopo da Análise:** {scope_text} — **Abrangência:** {geo_text}"
+
 # --- LOCAL PAGE FILTERS (Top of Page) ---
 
 def _render_common_geo_activity(db: CNPJDatabase, key_suffix: str):
@@ -191,6 +232,19 @@ def render_structure_filters(db: CNPJDatabase) -> dict:
         "date_start": d_start, "date_end": d_end, "limit": 1000, "only_active": True,
         "search_term": search_query.strip() if search_query else None
     }
+
+def render_market_intelligence_view(db: CNPJDatabase, filters):
+    """
+    Landing Page: Market Structure Analysis (Detailed).
+    """
+    # Dynamic Description
+    summary_text = generate_structural_summary("struct")
+    st.info(summary_text, icon="ℹ️")
+
+    # Unpack Filters (Dictionary)
+    sel_ufs = filters.get("ufs", [])
+    sel_city_codes = filters.get("municipio_codes", [])
+    sel_sectors = filters.get("sectors", [])
 
 def render_macro_filters(db: CNPJDatabase) -> dict:
     """Filters for 'Atividade Macro' (Focus on Geo/Sector)."""
@@ -820,6 +874,16 @@ def render_methodology_view():
     """)
 
 def render_market_intelligence_view(db: CNPJDatabase, filters):
+    """
+    Landing Page: Market Structure Analysis (Detailed).
+    """
+    # Dynamic Description
+    summary_text = generate_structural_summary("struct")
+    st.info(summary_text, icon="ℹ️")
+
+    # Unpack Filters
+    sel_ufs, sel_city_codes, sel_sectors = filters["ufs"], filters["city_codes"], filters["sectors"]
+    
     # CSS: Card Style for Metrics
     st.markdown("""
     <style>
