@@ -1095,6 +1095,15 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
             
             df_disp['Contato'] = df_disp.apply(get_contact, axis=1)
 
+            # Format Subclass (Code + Description)
+            if 'cnae_fiscal_principal' in df_disp.columns:
+                df_disp['Subclasse'] = df_disp.apply(
+                    lambda x: f"{format_cnae(x.get('cnae_fiscal_principal', ''))} - {x.get('cnae_desc', '')}", 
+                    axis=1
+                )
+            else:
+                 df_disp['Subclasse'] = df_disp.get('cnae_desc', '-')
+
             st.dataframe(
                 df_disp,
                 height=600,
@@ -1109,7 +1118,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                     "Capital (R$)", 
                     "Cidade/UF",
                     "natureza_desc", 
-                    "cnae_desc",
+                    "Subclasse",
                     "Endereço",
                     "Contato"
                 ],
@@ -1124,7 +1133,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                     "Capital (R$)": st.column_config.TextColumn("Capital Social", width="medium"),
                     "Cidade/UF": st.column_config.TextColumn("Localização", width="medium"),
                     "natureza_desc": st.column_config.TextColumn("Natureza Jurídica", width="medium"),
-                    "cnae_desc": st.column_config.TextColumn("Atividade Principal (CNAE)", width="large"),
+                    "Subclasse": st.column_config.TextColumn("Atividade (Subclasse CNAE)", width="large"),
                     "Endereço": st.column_config.TextColumn("Endereço Completo", width="large"),
                     "Contato": st.column_config.TextColumn("Contatos", width="medium"),
                 },
