@@ -84,6 +84,22 @@ def main():
         st.page_link(pg_macro, label="Atividade Industrial", icon=":material/factory:")
         st.page_link(pg_strat, label="Dinâmica Estratégica", icon=":material/hub:")
         
+        st.divider()
+        
+        with st.expander("ℹ️ Escopo e Metodologia"):
+            st.markdown("""
+            **Foco Industrial (Supply Side)**
+            Monitoramos exclusivamente o núcleo produtivo nacional (CNAE 05-33):
+            
+            1.  **Ind. Extrativa:** Minérios, Petróleo.
+            2.  **Ind. Transformação:** Manufatura.
+            
+            **Por que esta seleção?**
+            Para isolar a *capacidade instalada* real, removendo o ruído de setores transacionais (Comércio, Serviços) ou primários (Agro).
+            
+            **Dados:** Base oficial da Receita Federal (CNPJ) e índices físicos do IBGE (PIM-PF).
+            """)
+        
     # --- NAVIGATION ROUTER (Hidden) ---
     pg = st.navigation([pg_struct, pg_macro, pg_strat], position="hidden")
     
