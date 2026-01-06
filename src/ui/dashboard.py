@@ -59,6 +59,22 @@ def render_structure_filters(db: CNPJDatabase) -> dict:
         
         st.divider()
         
+        # 1.1 CNAE Specific (Class/Subclass)
+        # Using an expander for advanced granularity
+        sel_cnaes = []
+        with st.expander("🎯 Filtro Avançado: Atividade Específica (Classe/Subclasse)"):
+            df_cnae_all = get_options_cached(db, 'get_all_cnaes')
+            if not df_cnae_all.empty:
+                # Format: "1041400 - Fabricação de óleos vegetais..."
+                cnae_opts = df_cnae_all.apply(lambda x: f"{x['codigo']} - {x['descricao']}", axis=1).tolist()
+                sel_cnaes_ui = st.multiselect("Selecione uma ou mais atividades (pesquisável):", cnae_opts, placeholder="Digite para buscar (ex: Óleo, Soja, 10.41...)", key='f_cnae_specific')
+                # Extract clean codes
+                sel_cnaes = [c.split(" - ")[0] for c in sel_cnaes_ui]
+            else:
+                st.warning("Não foi possível carregar a lista de CNAEs.")
+
+        st.divider()
+        
         # 2. Detailed
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -80,6 +96,7 @@ def render_structure_filters(db: CNPJDatabase) -> dict:
 
     return {
         "ufs": sel_ufs, "municipio_codes": sel_city_codes, "sectors": sel_sectors,
+        "cnaes": sel_cnaes,
         "portes": sel_portes, "branch_mode": sel_branch_mode,
         "min_capital": min_cap, "max_capital": max_cap if max_cap > 0 else None,
         "date_start": d_start, "date_end": d_end, "limit": 1000, "only_active": True,
