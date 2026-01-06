@@ -89,20 +89,12 @@ def _render_common_geo_activity(db: CNPJDatabase, key_suffix: str):
     
     st.divider()
 
-    # 2. Structural Segmentation (Typology / Chain / Macro)
-    c3, c4 = st.columns(2)
-    with c3:
-        macro_opts = ["Todos", "Ind. Transformação (10-33)", "Ind. Extrativa (05-09)"]
-        sel_macro = st.selectbox("Grande Grupo (Seção)", macro_opts, key=f"macro_{key_suffix}")
-        
-    with c4:
-        c4a, c4b = st.columns(2)
-        with c4a:
-            opts_typ = ["Todas", "Indústria Extrativa", "Indústria de Base", "Indústria Intermediária", "Bens de Capital", "Bens de Consumo Duráveis", "Bens de Consumo Não Duráveis"]
-            sel_typology = st.selectbox("Tipologia", opts_typ, key=f"typ_{key_suffix}")
-        with c4b:
-            opts_chain = ["Todas", "Upstream", "Midstream", "Downstream"]
-            sel_chain = st.selectbox("Cadeia", opts_chain, key=f"chain_{key_suffix}")
+    st.divider()
+
+    # 2. Structural Segmentation REMOVED (User Request)
+    sel_macro = "Todos"
+    sel_typology = "Todas"
+    sel_chain = "Todas"
 
     # 3. CNAE Hierarchy Filters (Dependent)
     df_hier = get_cnae_hierarchy_cached()
