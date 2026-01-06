@@ -239,8 +239,8 @@ class BigQueryDatabase:
 
     def _build_where_clause(self, params, min_capital=0, max_capital=None, portes=None, 
                           only_active=False, ufs=None, municipio_codes=None, naturezas=None, 
-                          cnaes=None, sectors=None, date_start=None, date_end=None, search_term=None,
-                          branch_mode="Todos", limit=None):
+                          cnaes=None, sectors=None, groups=None, classes=None, date_start=None, 
+                          date_end=None, search_term=None, branch_mode="Todos", limit=None, **kwargs):
         where_clauses = []
         
         # Search Term (Name or CNPJ)
@@ -306,6 +306,20 @@ class BigQueryDatabase:
             if clean_sectors:
                 sec_list = ", ".join([f"'{s}'" for s in clean_sectors])
                 where_clauses.append(f"SUBSTR(st.cnae_fiscal_principal, 1, 2) IN ({sec_list})")
+
+        # Group Filter (3 digits)
+        if groups:
+            clean_groups = [g for g in groups if len(g) == 3 and g.isdigit()]
+            if clean_groups:
+                 grp_list = ", ".join([f"'{g}'" for g in clean_groups])
+                 where_clauses.append(f"SUBSTR(st.cnae_fiscal_principal, 1, 3) IN ({grp_list})")
+
+        # Class Filter (5 digits)
+        if classes:
+             clean_classes = [c for c in classes if len(c) == 5 and c.isdigit()]
+             if clean_classes:
+                 cls_list = ", ".join([f"'{c}'" for c in clean_classes])
+                 where_clauses.append(f"SUBSTR(st.cnae_fiscal_principal, 1, 5) IN ({cls_list})")
 
         # Date Range
         if date_start:

@@ -1,6 +1,7 @@
 ﻿import streamlit as st
 import pandas as pd
 import altair as alt
+import os
 from ..database import CNPJDatabase
 from ..utils import format_cnpj, format_currency, format_date, get_status_description, format_cnae
 from ..ibge import fetch_industry_data, get_latest_metrics
@@ -12,6 +13,13 @@ def get_options_cached(_db, method_name):
         return getattr(_db, method_name)()
     except:
         return pd.DataFrame()
+
+@st.cache_data
+def get_cnae_hierarchy_cached():
+    path = "src/data/cnae_hierarchy.csv"
+    if os.path.exists(path):
+        return pd.read_csv(path, dtype=str)
+    return pd.DataFrame()
 
 def generate_structural_summary(key_suffix: str) -> str:
     """Generates a text summary of the active filters."""
@@ -30,11 +38,17 @@ def generate_structural_summary(key_suffix: str) -> str:
     typ = st.session_state.get(f"typ_{key_suffix}", "Todas")
     chain = st.session_state.get(f"chain_{key_suffix}", "Todas")
     sectors = st.session_state.get(f"sec_{key_suffix}", [])
+    groups = st.session_state.get(f"grp_{key_suffix}", [])
+    classes = st.session_state.get(f"cls_{key_suffix}", [])
     
     scope_parts = []
     
-    # Priority to specific sectors if selected
-    if sectors:
+    # Priority to specific hierarchy
+    if classes:
+        scope_parts.append(f"{len(classes)} Classes Selecionadas")
+    elif groups:
+        scope_parts.append(f"{len(groups)} Grupos Selecionados")
+    elif sectors:
         scope_parts.append(f"{len(sectors)} Setores Selecionados")
     else:
         # Otherwise describe the Strategy filters
@@ -58,8 +72,8 @@ def generate_structural_summary(key_suffix: str) -> str:
 
 def _render_common_geo_activity(db: CNPJDatabase, key_suffix: str):
     """Helper to render Geo/Activity filters common to all pages."""
-    c1, c2, c3 = st.columns([1, 1, 2])
-    
+    # 1. Geography
+    c1, c2 = st.columns(2)
     with c1:
         states = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"]
         sel_ufs = st.multiselect("Estados", states, key=f"ufs_{key_suffix}")
@@ -68,123 +82,158 @@ def _render_common_geo_activity(db: CNPJDatabase, key_suffix: str):
         df_muni = get_options_cached(db, 'get_all_municipios')
         sel_city_codes = []
         if not df_muni.empty:
-            if sel_ufs:
-                muni_opts = df_muni[df_muni['uf'].isin(sel_ufs)]['descricao'].tolist() if 'uf' in df_muni.columns else df_muni['descricao'].tolist()
-            else:
-                muni_opts = df_muni['descricao'].tolist()  
+            muni_opts = df_muni[df_muni['uf'].isin(sel_ufs)]['descricao'].tolist() if sel_ufs else df_muni['descricao'].tolist()
             sel_city_names = st.multiselect("Municípios", muni_opts, placeholder="Todas", key=f"city_{key_suffix}")
             if sel_city_names:
                 sel_city_codes = df_muni[df_muni['descricao'].isin(sel_city_names)]['codigo'].tolist()
     
+    st.divider()
+
+    # 2. Structural Segmentation (Typology / Chain / Macro)
+    c3, c4 = st.columns(2)
     with c3:
-        # Macro Segmentation (Extractive vs Transformation)
         macro_opts = ["Todos", "Ind. Transformação (10-33)", "Ind. Extrativa (05-09)"]
-        sel_macro = st.selectbox("Grande Grupo Industrial", macro_opts, key=f"macro_{key_suffix}")
-
-        # Level 1: Typology & Value Chain
-        c_p1, c_p2 = st.columns(2)
-        with c_p1:
+        sel_macro = st.selectbox("Grande Grupo (Seção)", macro_opts, key=f"macro_{key_suffix}")
+        
+    with c4:
+        c4a, c4b = st.columns(2)
+        with c4a:
             opts_typ = ["Todas", "Indústria Extrativa", "Indústria de Base", "Indústria Intermediária", "Bens de Capital", "Bens de Consumo Duráveis", "Bens de Consumo Não Duráveis"]
-            sel_typology = st.selectbox("Tipologia (Nível 1)", opts_typ, key=f"typ_{key_suffix}")
-        with c_p2:
+            sel_typology = st.selectbox("Tipologia", opts_typ, key=f"typ_{key_suffix}")
+        with c4b:
             opts_chain = ["Todas", "Upstream", "Midstream", "Downstream"]
-            sel_chain = st.selectbox("Cadeia de Valor", opts_chain, key=f"chain_{key_suffix}")
+            sel_chain = st.selectbox("Cadeia", opts_chain, key=f"chain_{key_suffix}")
 
-        df_sectors = get_options_cached(db, 'get_industrial_divisions')
-        sel_sectors = []
-        if not df_sectors.empty:
-            # 1. Apply Intersecting Filters
-            # Start with all divs present in db
-            current_divs = pd.to_numeric(df_sectors['division_code']).astype(int).tolist()
-            allowed_divs = set(current_divs)
+    # 3. CNAE Hierarchy Filters (Dependent)
+    df_hier = get_cnae_hierarchy_cached()
+    
+    sel_divs = []
+    sel_groups = []
+    sel_classes = []
+    
+    if not df_hier.empty:
+        # A. Apply Intersection Logic (Macro/Typology/Chain -> Allowed Divisions)
+        current_divs = df_hier['divisao_code'].unique().tolist()
+        allowed_divs = set(current_divs)
+        
+        # Macro
+        if "Transformação" in sel_macro:
+            allowed_divs &= set([str(x).zfill(2) for x in range(10, 34)])
+        elif "Extrativa" in sel_macro:
+            allowed_divs &= set([str(x).zfill(2) for x in range(5, 10)])
             
-            # A. Macro
-            if "Transformação" in sel_macro:
-                allowed_divs &= set(range(10, 34))
-            elif "Extrativa" in sel_macro:
-                allowed_divs &= set(range(5, 10))
+        # Typology
+        if sel_typology != "Todas":
+            allowed_divs &= set(get_divisions_for_typology(sel_typology))
             
-            # B. Typology
-            if sel_typology != "Todas":
-                allowed_divs &= set(get_divisions_for_typology(sel_typology))
-                
-            # C. Chain
-            if sel_chain != "Todas":
-                allowed_divs &= set(get_divisions_for_value_chain(sel_chain))
+        # Chain
+        if sel_chain != "Todas":
+            allowed_divs &= set(get_divisions_for_value_chain(sel_chain))
             
-            # Apply Filter to DataFrame
-            df_sectors = df_sectors[pd.to_numeric(df_sectors['division_code']).isin(allowed_divs)]
-
-            # 2. REVERSE DEPENDENCY: If specific subclasses are selected (in Structure page), 
-            # we restrict the Sector options to match those subclasses.
-            if key_suffix == "struct":
-                downstream_subs = st.session_state.get('f_cnae_specific', [])
-                if downstream_subs:
-                    # Extract "10" from "10.41..."
-                    valid_prefixes = set()
-                    for item in downstream_subs:
-                        # Item format: "10.41-X/XX - Desc"
-                        # Simply take first 2 chars
-                        if len(item) >= 2 and item[:2].isdigit():
-                            valid_prefixes.add(item[:2])
-                    
-                    if valid_prefixes:
-                        df_sectors = df_sectors[df_sectors['division_code'].isin(valid_prefixes)]
-
-            sec_opts = df_sectors['label'].tolist()
-            ui_sectors = st.multiselect("Setores (CNAE)", sec_opts, placeholder="Todos os Setores", key=f"sec_{key_suffix}")
-            sel_sectors = [s.split(" - ")[0] for s in ui_sectors]
-
-            # DATA QUERY CONNECTION: 
-            # If Macro Filter is active (Transformation/Extractive) but no specific Sector is clicked,
-            # we must explicitly pass ALL sectors of that group.
-            # Otherwise, passing [] causes the backend to fetch EVERYTHING (ignoring the macro group).
-            # DATA QUERY CONNECTION: 
-            # If Filters are active (Macro/Typology/Chain) but no specific Sector is clicked,
-            # we must explicitly pass ALL allowed sectors.
-            # Otherwise, query receives [] (All) which ignores the filters.
-            filters_active = ("Transformação" in sel_macro or "Extrativa" in sel_macro) or (sel_typology != "Todas") or (sel_chain != "Todas")
+        # Filter Hierarchy DF
+        df_filtered = df_hier[df_hier['divisao_code'].isin(allowed_divs)]
+        
+        # B. Level 1: Division
+        div_opts = sorted(df_filtered['div_label'].unique().tolist())
+        sel_div_labels = st.multiselect("Divisão (Setor)", div_opts, placeholder="Todos", key=f"div_{key_suffix}")
+        
+        if sel_div_labels:
+            # Extract Codes (e.g. "10 - Food" -> "10")
+            sel_divs = [s.split(" - ")[0] for s in sel_div_labels]
+            df_filtered = df_filtered[df_filtered['divisao_code'].isin(sel_divs)]
+        
+        # C. Level 2: Group (Filtered by Div)
+        grp_opts = sorted(df_filtered['grp_label'].unique().tolist())
+        sel_grp_labels = st.multiselect("Grupo", grp_opts, placeholder="Todos", key=f"grp_{key_suffix}")
+        
+        if sel_grp_labels:
+            sel_groups_dirty = [s.split(" - ")[0] for s in sel_grp_labels] # "10.1"
+            sel_groups = [g.replace(".", "") for g in sel_groups_dirty] # "101"
+            df_filtered = df_filtered[df_filtered['grupo_code'].astype(str).isin(sel_groups_dirty)]
             
-            if not sel_sectors and filters_active:
-                sel_sectors = df_sectors['division_code'].tolist()
-
-    return sel_ufs, sel_city_codes, sel_sectors
+        # D. Level 3: Class (Filtered by Group)
+        cls_opts = sorted(df_filtered['cls_label'].unique().tolist())
+        sel_cls_labels = st.multiselect("Classe", cls_opts, placeholder="Todas", key=f"cls_{key_suffix}")
+        
+        if sel_cls_labels:
+             sel_classes_dirty = [s.split(" - ")[0] for s in sel_cls_labels] # "10.11-3"
+             sel_classes = [c.replace(".", "").replace("-", "") for c in sel_classes_dirty] # "10113"
+             
+             # Also helpful usage for structure page
+             # Store selected class codes for caller use?
+             
+    # Clean up empty lists to None/Empty
+    
+    return sel_ufs, sel_city_codes, sel_divs, sel_groups, sel_classes
 
 def render_structure_filters(db: CNPJDatabase) -> dict:
     """Filters for 'Estrutura de Mercado' (Full Company Details)."""
     with st.expander("Filtros & Segmentação", expanded=False):
-        # 0. Search (Restored from Global)
+        # 0. Search
         c_search, c_empty = st.columns([3, 1])
         with c_search:
             search_query = st.text_input("Busca Rápida (Nome ou CNPJ)", placeholder="Ex: PETROBRAS ou 33.000.167...", key='search_struct')
         
         st.divider()
 
-        # 1. Global
-        sel_ufs, sel_city_codes, sel_sectors = _render_common_geo_activity(db, "struct")
+        # 1. Global & Hierarchy
+        sel_ufs, sel_city_codes, sel_sectors, sel_groups, sel_classes = _render_common_geo_activity(db, "struct")
         
         st.divider()
         
-        # 1.1 CNAE Specific (Class/Subclass)
+        # 1.1 CNAE Specific (Subclass - Final Level)
         sel_cnaes = []
         df_cnae_all = get_options_cached(db, 'get_all_cnaes')
         
         if not df_cnae_all.empty:
-            # SCOPE ENFORCEMENT: Only Industrial Activities (Divisions 05-33)
-            # This filters out Agriculture (01-03), Services, Trade, etc.
+            # SCOPE ENFORCEMENT
             try:
                 df_cnae_all = df_cnae_all[
                     pd.to_numeric(df_cnae_all['codigo'].str.slice(0, 2), errors='coerce').fillna(0).astype(int).between(5, 33)
                 ]
-            except Exception:
-                pass # Fail gracefully if codes are malformed
+            except: pass
 
-            # Dependency: Filter options based on selected Sectors (if any)
-            if sel_sectors:
-                # Filter codes starting with the 2-digit sector code
-                df_cnae_all = df_cnae_all[df_cnae_all['codigo'].str.slice(0, 2).isin(sel_sectors)]
+            # Filter dependent on Class/Group/Sector
+            # Precedence: Class > Group > Sector
+            filters_cnae_active = False
             
-            # Formatting: 10.41-4/00 - Descrição
+            if sel_classes:
+                # Filter by Class Prefix (5 chars? No DB has 7 digits formatted. "10.11-3" -> slice(0,7))
+                # Wait, "10.41-4" is Class code.
+                # DB format: "1011-3/01".
+                # Standardize?
+                # Best way: Filter using clean codes logic if possible
+                pass 
+                # Let's rely on simple string matching
+                valid_prefixes = [c[:5] for c in sel_classes] # 5 chars from clean class? No.
+                # sel_classes is CLEAN "10113".
+                # DB 'codigo': "1011-3/01".
+                # Clean DB code: "1011301".
+                # Match starts with.
+                filters_cnae_active = True
+                
+                # Apply filter locally to DF
+                # We need to clean DF codes for comparison or format input
+                # Let's clean DB codes temporarily
+                df_codes = df_cnae_all['codigo'].str.replace(r'[^0-9]', '', regex=True)
+                mask = df_codes.str.slice(0, 5).isin(sel_classes)
+                df_cnae_all = df_cnae_all[mask]
+
+            elif sel_groups:
+                 filters_cnae_active = True
+                 # sel_groups is CLEAN "101".
+                 df_codes = df_cnae_all['codigo'].str.replace(r'[^0-9]', '', regex=True)
+                 mask = df_codes.str.slice(0, 3).isin(sel_groups)
+                 df_cnae_all = df_cnae_all[mask]
+
+            elif sel_sectors:
+                 filters_cnae_active = True
+                 # sel_sectors is CLEAN "10".
+                 df_codes = df_cnae_all['codigo'].str.replace(r'[^0-9]', '', regex=True)
+                 mask = df_codes.str.slice(0, 2).isin(sel_sectors)
+                 df_cnae_all = df_cnae_all[mask]
+
+            # Formatting
             cnae_opts = df_cnae_all.apply(
                 lambda x: f"{format_cnae(x['codigo'])} - {x['descricao']}", 
                 axis=1
@@ -193,11 +242,11 @@ def render_structure_filters(db: CNPJDatabase) -> dict:
             sel_cnaes_ui = st.multiselect(
                 "Atividade Específica (Subclasse)", 
                 cnae_opts, 
-                placeholder="Selecione ou digite para buscar (ex: 10.41...)", 
-                key='f_cnae_specific'
+                placeholder="Selecione (Limitado pelo filtro acima)", 
+                key='f_cnae_specific',
+                disabled=False
             )
             
-            # Extract clean codes for Query (removing formatting)
             if sel_cnaes_ui:
                 sel_cnaes = [c.split(" - ")[0].replace(".", "").replace("-", "").replace("/", "") for c in sel_cnaes_ui]
         else:
@@ -225,7 +274,8 @@ def render_structure_filters(db: CNPJDatabase) -> dict:
         max_cap = c_cap2.number_input("Capital Máx.", 0.0, step=100000.0, format="%.0f", key='f_max_cap_struct')
 
     return {
-        "ufs": sel_ufs, "municipio_codes": sel_city_codes, "sectors": sel_sectors,
+        "ufs": sel_ufs, "municipio_codes": sel_city_codes, 
+        "sectors": sel_sectors, "groups": sel_groups, "classes": sel_classes,
         "cnaes": sel_cnaes,
         "portes": sel_portes, "branch_mode": sel_branch_mode,
         "min_capital": min_cap, "max_capital": max_cap if max_cap > 0 else None,
@@ -238,10 +288,11 @@ def render_structure_filters(db: CNPJDatabase) -> dict:
 def render_macro_filters(db: CNPJDatabase) -> dict:
     """Filters for 'Atividade Macro' (Focus on Geo/Sector)."""
     with st.expander("Filtros Regionais e Setoriais", expanded=False):
-        sel_ufs, sel_city_codes, sel_sectors = _render_common_geo_activity(db, "macro")
+        sel_ufs, sel_city_codes, sel_sectors, sel_groups, sel_classes = _render_common_geo_activity(db, "macro")
         
     return {
         "ufs": sel_ufs, "municipio_codes": sel_city_codes, "sectors": sel_sectors,
+        "groups": sel_groups, "classes": sel_classes,
         "portes": ["05"], "branch_mode": "Todos", "limit": 1000, "only_active": True,
         "min_capital": 0.0, "max_capital": None, "date_start": None, "date_end": None
     }
@@ -249,11 +300,12 @@ def render_macro_filters(db: CNPJDatabase) -> dict:
 def render_strategy_filters(db: CNPJDatabase) -> dict:
     """Filters for 'Dinâmica Estratégica' (Micro correlation)."""
     with st.expander("Filtros de Correlação (Micro)", expanded=False):
-        sel_ufs, sel_city_codes, sel_sectors = _render_common_geo_activity(db, "strat")
+        sel_ufs, sel_city_codes, sel_sectors, sel_groups, sel_classes = _render_common_geo_activity(db, "strat")
         st.caption("Filtre o segmento Micro para correlacionar com a Produção Industrial Nacional.")
         
     return {
-        "ufs": sel_ufs, "municipio_codes": sel_city_codes, "sectors": sel_sectors,
+        "ufs": sel_ufs, "municipio_codes": sel_city_codes, 
+        "sectors": sel_sectors, "groups": sel_groups, "classes": sel_classes,
         "portes": ["05"], "branch_mode": "Todos", "limit": 1000, "only_active": True,
         "min_capital": 0.0, "max_capital": None, "date_start": None, "date_end": None
     }
