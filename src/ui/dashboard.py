@@ -2,7 +2,7 @@
 import pandas as pd
 import altair as alt
 from ..database import CNPJDatabase
-from ..utils import format_cnpj, format_currency, format_date, get_status_description
+from ..utils import format_cnpj, format_currency, format_date, get_status_description, format_cnae
 from ..ibge import fetch_industry_data, get_latest_metrics
 
 @st.cache_data
@@ -60,18 +60,33 @@ def render_structure_filters(db: CNPJDatabase) -> dict:
         st.divider()
         
         # 1.1 CNAE Specific (Class/Subclass)
-        # Using an expander for advanced granularity
         sel_cnaes = []
-        with st.expander("🎯 Filtro Avançado: Atividade Específica (Classe/Subclasse)"):
-            df_cnae_all = get_options_cached(db, 'get_all_cnaes')
-            if not df_cnae_all.empty:
-                # Format: "1041400 - Fabricação de óleos vegetais..."
-                cnae_opts = df_cnae_all.apply(lambda x: f"{x['codigo']} - {x['descricao']}", axis=1).tolist()
-                sel_cnaes_ui = st.multiselect("Selecione uma ou mais atividades (pesquisável):", cnae_opts, placeholder="Digite para buscar (ex: Óleo, Soja, 10.41...)", key='f_cnae_specific')
-                # Extract clean codes
-                sel_cnaes = [c.split(" - ")[0] for c in sel_cnaes_ui]
-            else:
-                st.warning("Não foi possível carregar a lista de CNAEs.")
+        df_cnae_all = get_options_cached(db, 'get_all_cnaes')
+        
+        if not df_cnae_all.empty:
+            # Dependency: Filter options based on selected Sectors (if any)
+            if sel_sectors:
+                # Filter codes starting with the 2-digit sector code
+                df_cnae_all = df_cnae_all[df_cnae_all['codigo'].str.slice(0, 2).isin(sel_sectors)]
+            
+            # Formatting: 10.41-4/00 - Descrição
+            cnae_opts = df_cnae_all.apply(
+                lambda x: f"{format_cnae(x['codigo'])} - {x['descricao']}", 
+                axis=1
+            ).tolist()
+            
+            sel_cnaes_ui = st.multiselect(
+                "Atividade Específica (Subclasse)", 
+                cnae_opts, 
+                placeholder="Selecione ou digite para buscar (ex: 10.41...)", 
+                key='f_cnae_specific'
+            )
+            
+            # Extract clean codes for Query (removing formatting)
+            if sel_cnaes_ui:
+                sel_cnaes = [c.split(" - ")[0].replace(".", "").replace("-", "").replace("/", "") for c in sel_cnaes_ui]
+        else:
+            st.warning("Lista de CNAEs indisponível.")
 
         st.divider()
         
