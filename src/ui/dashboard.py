@@ -133,34 +133,34 @@ def _render_common_geo_activity(db: CNPJDatabase, key_suffix: str):
         # Filter Hierarchy DF
         df_filtered = df_hier[df_hier['divisao_code'].isin(allowed_divs)]
         
+        # --- HIERARCHY LAYOUT (3 Columns) ---
+        st.markdown("##### Detalhamento Setorial (CNAE)")
+        c_h1, c_h2, c_h3 = st.columns(3)
+        
         # B. Level 1: Division
-        div_opts = sorted(df_filtered['div_label'].unique().tolist())
-        sel_div_labels = st.multiselect("Divisão (Setor)", div_opts, placeholder="Todos", key=f"div_{key_suffix}")
+        with c_h1:
+            div_opts = sorted(df_filtered['div_label'].unique().tolist())
+            sel_div_labels = st.multiselect("1. Divisão (Setor)", div_opts, placeholder="Todos", key=f"div_{key_suffix}")
+            if sel_div_labels:
+                sel_divs = [s.split(" - ")[0] for s in sel_div_labels]
+                df_filtered = df_filtered[df_filtered['divisao_code'].isin(sel_divs)]
         
-        if sel_div_labels:
-            # Extract Codes (e.g. "10 - Food" -> "10")
-            sel_divs = [s.split(" - ")[0] for s in sel_div_labels]
-            df_filtered = df_filtered[df_filtered['divisao_code'].isin(sel_divs)]
-        
-        # C. Level 2: Group (Filtered by Div)
-        grp_opts = sorted(df_filtered['grp_label'].unique().tolist())
-        sel_grp_labels = st.multiselect("Grupo", grp_opts, placeholder="Todos", key=f"grp_{key_suffix}")
-        
-        if sel_grp_labels:
-            sel_groups_dirty = [s.split(" - ")[0] for s in sel_grp_labels] # "10.1"
-            sel_groups = [g.replace(".", "") for g in sel_groups_dirty] # "101"
-            df_filtered = df_filtered[df_filtered['grupo_code'].astype(str).isin(sel_groups_dirty)]
+        # C. Level 2: Group
+        with c_h2:
+            grp_opts = sorted(df_filtered['grp_label'].unique().tolist())
+            sel_grp_labels = st.multiselect("2. Grupo", grp_opts, placeholder="Todos", key=f"grp_{key_suffix}")
+            if sel_grp_labels:
+                sel_groups_dirty = [s.split(" - ")[0] for s in sel_grp_labels]
+                sel_groups = [g.replace(".", "") for g in sel_groups_dirty]
+                df_filtered = df_filtered[df_filtered['grupo_code'].astype(str).isin(sel_groups_dirty)]
             
-        # D. Level 3: Class (Filtered by Group)
-        cls_opts = sorted(df_filtered['cls_label'].unique().tolist())
-        sel_cls_labels = st.multiselect("Classe", cls_opts, placeholder="Todas", key=f"cls_{key_suffix}")
-        
-        if sel_cls_labels:
-             sel_classes_dirty = [s.split(" - ")[0] for s in sel_cls_labels] # "10.11-3"
-             sel_classes = [c.replace(".", "").replace("-", "") for c in sel_classes_dirty] # "10113"
-             
-             # Also helpful usage for structure page
-             # Store selected class codes for caller use?
+        # D. Level 3: Class
+        with c_h3:
+            cls_opts = sorted(df_filtered['cls_label'].unique().tolist())
+            sel_cls_labels = st.multiselect("3. Classe", cls_opts, placeholder="Todas", key=f"cls_{key_suffix}")
+            if sel_cls_labels:
+                 sel_classes_dirty = [s.split(" - ")[0] for s in sel_cls_labels]
+                 sel_classes = [c.replace(".", "").replace("-", "") for c in sel_classes_dirty]
              
     # Clean up empty lists to None/Empty
     
@@ -240,7 +240,7 @@ def render_structure_filters(db: CNPJDatabase) -> dict:
             ).tolist()
             
             sel_cnaes_ui = st.multiselect(
-                "Atividade Específica (Subclasse)", 
+                "4. Subclasse (Atividade Específica)", 
                 cnae_opts, 
                 placeholder="Selecione (Limitado pelo filtro acima)", 
                 key='f_cnae_specific',
