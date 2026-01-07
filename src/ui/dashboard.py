@@ -162,6 +162,7 @@ def _render_common_geo_activity(db: CNPJDatabase, key_suffix: str):
 def render_structure_filters(db: CNPJDatabase) -> dict:
     """Filters for 'Estrutura de Mercado' (Full Company Details)."""
     with st.expander("Filtros & Segmentação", expanded=False):
+        st.caption("Versão 2.3 - Hierarquia CNAE (Debug)")
         # 0. Search
         c_search, c_empty = st.columns([3, 1])
         with c_search:
