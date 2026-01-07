@@ -6,6 +6,7 @@ from ..database import CNPJDatabase
 from ..utils import format_cnpj, format_currency, format_date, get_status_description, format_cnae
 from ..ibge import fetch_industry_data, get_latest_metrics
 from ..classification import get_industrial_typology, get_divisions_for_typology, get_divisions_for_value_chain
+from .tooltips import TOOLTIPS
 
 @st.cache_data
 def get_options_cached(_db, method_name):
@@ -215,7 +216,8 @@ def render_structure_filters(db: CNPJDatabase) -> dict:
                 cnae_opts, 
                 placeholder="Selecione (Limitado por Divisão/Grupo/Classe acima)", 
                 key='f_cnae_specific',
-                disabled=False
+                disabled=False,
+                help=TOOLTIPS["cnae_subclasse"]
             )
             
             if sel_cnaes_ui:
@@ -227,11 +229,11 @@ def render_structure_filters(db: CNPJDatabase) -> dict:
         st.markdown("##### Filtros Avançados")
         c1, c2, c3 = st.columns(3)
         with c1:
-            sel_portes_ui = st.multiselect("Porte", ["01 (ME)", "03 (EPP)", "05 (Demais)"], default=["05 (Demais)"], key='f_porte_struct')
+            sel_portes_ui = st.multiselect("Porte", ["01 (ME)", "03 (EPP)", "05 (Demais)"], default=["05 (Demais)"], key='f_porte_struct', help=TOOLTIPS["porte"])
             sel_portes = [p.split()[0] for p in sel_portes_ui] if sel_portes_ui else []
             
         with c2:
-            sel_branch_mode = st.radio("Escopo", ["Todos", "Somente Matrizes", "Somente Filiais"], index=0, horizontal=True, key='f_scope_struct')
+            sel_branch_mode = st.radio("Escopo", ["Todos", "Somente Matrizes", "Somente Filiais"], index=0, horizontal=True, key='f_scope_struct', help=TOOLTIPS["escopo_geo"])
             
         with c3:
             d_range = st.date_input("Data Abertura", [], key='f_date_struct')
@@ -588,19 +590,19 @@ def render_macro_view(filters=None):
             
             idx_val = metrics.get(k_idx_clean, 0)
             diff_base = idx_val - 100.0
-            c1.metric("Índice (Base Fixa)", f"{idx_val:.2f}", f"{diff_base:+.2f} pts (vs 2022)")
+            c1.metric("Índice (Base Fixa)", f"{idx_val:.2f}", f"{diff_base:+.2f} pts (vs 2022)", help=TOOLTIPS["kpi_indice_base"])
             
             c2.metric("Índice (Sazonal)", f"{metrics.get(k_idx_saz, 0):.2f}", "Ajustado")
-            c3.metric("Var. Mensal (Sazonal)", f"{metrics.get(k_mom_saz, 0):.2f}%", "Ritmo (Mês/Mês)")
+            c3.metric("Var. Mensal (Sazonal)", f"{metrics.get(k_mom_saz, 0):.2f}%", "Ritmo (Mês/Mês)", help=TOOLTIPS["kpi_ritmo"])
             
             # Row 2: Variações de Longo Prazo
             # Small spacer
             st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
             
             c4, c5, c6 = st.columns(3)
-            c4.metric("Var. Mensal (YoY)", f"{metrics.get(k_mom_yoy, 0):.2f}%", "Out/25 vs Out/24")
+            c4.metric("Var. Mensal (YoY)", f"{metrics.get(k_mom_yoy, 0):.2f}%", "Out/25 vs Out/24", help=TOOLTIPS["kpi_yoy"])
             c5.metric("Acumulado no Ano", f"{metrics.get(k_acc_year, 0):.2f}%", "Jan até Atual")
-            c6.metric("Acumulado 12 Meses", f"{metrics.get(k_acc_12m, 0):.2f}%", "Tendência (Longo Prazo)")
+            c6.metric("Acumulado 12 Meses", f"{metrics.get(k_acc_12m, 0):.2f}%", "Tendência (Longo Prazo)", help=TOOLTIPS["kpi_tendencia"])
             
             st.markdown("---")
             
@@ -664,7 +666,7 @@ def render_macro_view(filters=None):
             c_pulse, c_trend = st.columns(2)
             
             with c_pulse:
-                st.markdown("#### O Ritmo (Curto Prazo)")
+                st.markdown("#### O Ritmo (Curto Prazo)", help=TOOLTIPS["kpi_ritmo"])
                 st.caption("Variação Mensal (Sazonal) - O termômetro da volatilidade.")
                 
                 df_pulse = df_ibge[ (df_ibge['variable'] == mom_key) & (df_ibge['location'] == actual_loc) ]
@@ -680,7 +682,7 @@ def render_macro_view(filters=None):
                 st.altair_chart(bar_pulse, width="stretch")
                 
             with c_trend:
-                st.markdown("#### A Tendência (Longo Prazo)")
+                st.markdown("#### A Tendência (Longo Prazo)", help=TOOLTIPS["kpi_tendencia"])
                 st.caption("Acumulado 12 Meses - Direção estrutural do ciclo.")
                 
                 df_trend = df_ibge[ (df_ibge['variable'] == acc12_key) & (df_ibge['location'] == actual_loc) ]
@@ -703,7 +705,7 @@ def render_macro_view(filters=None):
             c_yoy, c_year = st.columns(2)
             
             with c_yoy:
-                st.markdown("#### Comparativo Anual (YoY)")
+                st.markdown("#### Comparativo Anual (YoY)", help=TOOLTIPS["kpi_yoy"])
                 st.caption("Variação vs Mesmo Mês Ano Anterior")
                 
                 df_yoy = df_ibge[ (df_ibge['variable'] == k_mom_yoy) & (df_ibge['location'] == actual_loc) ]
@@ -716,6 +718,17 @@ def render_macro_view(filters=None):
                     tooltip=[alt.Tooltip('date:T', format='%b/%Y'), alt.Tooltip('value', format='.2f')]
                 ).properties(height=250)
                 st.altair_chart(bar_yoy, width="stretch")
+# ...
+# ... Skipping unrelated lines
+# ...
+                if mom_key in df_pivot.columns and acc12_key in df_pivot.columns:
+                    
+                    # Pre-calculate color for highlighting (Actual Loc = Red, Others = Blue)
+                    df_pivot['color_base'] = df_pivot['location'].apply(lambda x: '#d62728' if x == actual_loc else '#3b82f6')
+
+                    # TOGGLE MODE: Advanced vs Simple
+                    st.markdown("#### Diagnóstico de Ciclo Econômico", help=TOOLTIPS["chart_scatter"])
+                    view_mode = st.radio("Modo de Visualização:", ["Ranking de Desempenho (Simples)", "Mapa de Ciclo (Avançado)"], horizontal=True, label_visibility="collapsed")
 
             with c_year:
                 st.markdown("#### Acumulado no Ano")
@@ -1019,53 +1032,70 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
 
             st.markdown("##### Indicadores Chave")
             k1, k2, k3, k4 = st.columns(4)
-            k1.metric("Estabelecimentos Ativos", fmt_total, "Total em Operação")
-            k2.metric("Capital Médio", fmt_cap, "Solidez Financeira")
-            k3.metric("Setor Líder", leader_name, "Maior Volume")
-            k4.metric("Concentração", f"{concentration:.1f}%", "Share do Top 1")
+            k1.metric("Estabelecimentos Ativos", fmt_total, "Total em Operação", help=TOOLTIPS["kpi_ativos"])
+            k2.metric("Capital Médio", fmt_cap, "Solidez Financeira", help=TOOLTIPS["kpi_capital_medio"])
+            k3.metric("Setor Líder", leader_name, "Maior Volume", help=TOOLTIPS["kpi_setor_lider"])
+            k4.metric("Concentração", f"{concentration:.1f}%", "Share do Top 1", help=TOOLTIPS["kpi_concentracao"])
             
             st.markdown("---")
             
             # --- SECTION 1.5: DISTRIBUTION & INTERACTIVITY (Bidirectional) ---
             st.markdown("##### Distribuição da Base (Clique para Filtrar)")
             
-            c_g, c_s = st.columns(2)
+            # st.columns(2) removed to fix "compressed" look
+            # c_g, c_s = st.columns(2) 
             
             # Selectors
             sel_uf_click = alt.selection_point(fields=['uf'], name='sel_uf')
             sel_sec_click = alt.selection_point(fields=['sector_code'], name='sel_sec')
             
-            with c_g:
-                # Geo Distribution
-                df_geo = db.get_geo_distribution(**mi_filters)
-                if not df_geo.empty:
-                    # Expecting 'uf' and 'count'
-                    chart_geo = alt.Chart(df_geo.head(10)).mark_bar().add_params(sel_uf_click).encode(
-                        x=alt.X('count:Q', title='Qtd', axis=alt.Axis(grid=False)),
-                        y=alt.Y('uf:N', sort='-x', title=None),
-                        color=alt.condition(sel_uf_click, alt.value('#2ecc71'), alt.value('lightgray')),
-                        tooltip=['uf', 'count']
-                    ).properties(height=250, title="Top Estados")
-                    
-                    geo_event = st.altair_chart(chart_geo, width="stretch", on_select="rerun", key="struct_geo")
-                else:
-                    st.info("Sem dados geográficos.")
-                    geo_event = None
+            # 1. Geo Distribution (Stacked)
+            df_geo = db.get_geo_distribution(**mi_filters)
+            if not df_geo.empty:
+                # Reverted to Top 10 per user request
+                chart_geo = alt.Chart(df_geo.head(10)).mark_bar().add_params(sel_uf_click).encode(
+                    x=alt.X('count:Q', title='Qtd', axis=alt.Axis(grid=False)),
+                    y=alt.Y('uf:N', sort='-x', title=None, axis=alt.Axis(labelOverlap=False)), # Force all labels
+                    color=alt.condition(sel_uf_click, alt.value('#2ecc71'), alt.value('lightgray')),
+                    tooltip=['uf', 'count']
+                ).properties(height=300, title="Top Estados (Distribuição Geográfica)")
+                
+                geo_event = st.altair_chart(chart_geo, width="stretch", on_select="rerun", key="struct_geo")
+            else:
+                st.info("Sem dados geográficos.")
+                geo_event = None
 
-            with c_s:
-                # Sector Distribution (Already fetched in df_sectors)
-                if not df_sectors.empty:
-                    chart_sec = alt.Chart(df_sectors.head(10)).mark_bar().add_params(sel_sec_click).encode(
-                        x=alt.X('count:Q', title='Qtd', axis=alt.Axis(grid=False)),
-                        y=alt.Y('sector_code:N', sort='-x', title=None),
-                        color=alt.condition(sel_sec_click, alt.value('#9b59b6'), alt.value('lightgray')),
-                        tooltip=['sector_code', 'count']
-                    ).properties(height=250, title="Top Setores")
+            st.divider() # Visual separation between charts
+
+            # 2. Sector Distribution (Stacked)
+            # Already fetched in df_sectors
+            if not df_sectors.empty:
+                # Enrich with Description
+                df_divs = get_options_cached(db, 'get_industrial_divisions')
+                if not df_divs.empty and 'sector_code' in df_sectors.columns:
+                    # Create mapping
+                    # Less truncation needed now that we have full width
+                    df_divs['short_desc'] = df_divs['label'].apply(lambda x: x.split(" - ")[1][:50] + "..." if len(x.split(" - ")[1]) > 50 else x.split(" - ")[1])
+                    df_divs['hybrid_label'] = df_divs['division_code'] + " - " + df_divs['short_desc']
                     
-                    sec_event = st.altair_chart(chart_sec, width="stretch", on_select="rerun", key="struct_sec")
+                    df_sectors = df_sectors.merge(df_divs[['division_code', 'hybrid_label', 'label']], left_on='sector_code', right_on='division_code', how='left')
+                    df_sectors['display_label'] = df_sectors['hybrid_label'].fillna(df_sectors['sector_code'])
+                    df_sectors['full_label'] = df_sectors['label'].fillna(df_sectors['sector_code'])
                 else:
-                    st.info("Sem dados setoriais.")
-                    sec_event = None
+                    df_sectors['display_label'] = df_sectors['sector_code']
+                    df_sectors['full_label'] = df_sectors['sector_code']
+
+                chart_sec = alt.Chart(df_sectors.head(10)).mark_bar().add_params(sel_sec_click).encode(
+                    x=alt.X('count:Q', title='Qtd', axis=alt.Axis(grid=False)),
+                    y=alt.Y('display_label:N', sort='-x', title=None, axis=alt.Axis(labelLimit=400)), # Increased Label Limit
+                    color=alt.condition(sel_sec_click, alt.value('#9b59b6'), alt.value('lightgray')),
+                    tooltip=[alt.Tooltip('full_label', title='Setor'), alt.Tooltip('count', title='Qtd', format=',d')]
+                ).properties(height=350, title="Top Setores (Distribuição Industrial)") # Increased Height
+                
+                sec_event = st.altair_chart(chart_sec, width="stretch", on_select="rerun", key="struct_sec")
+            else:
+                st.info("Sem dados setoriais.")
+                sec_event = None
 
             # --- HANDLE INTERACTIONS ---
             # 1. Geo Click
@@ -1117,7 +1147,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                          """, unsafe_allow_html=True)
 
                  with c_chart:
-                     st.caption("**Ranking Top 10 (Capital Social)**")
+                     st.caption("**Ranking Top 10 (Capital Social)**", help=TOOLTIPS["chart_ranking_capital"])
                      chart_rank = alt.Chart(df_top100.head(10)).mark_bar().encode(
                          x=alt.X('capital_social:Q', title='Capital (R$)', axis=alt.Axis(format=',.2s', grid=False)),
                          y=alt.Y('razao_social:N', sort='-x', title=None, axis=alt.Axis(labelLimit=200)),
@@ -1140,7 +1170,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
             c_age, c_nature = st.columns(2)
             
             with c_age:
-                st.markdown("#### Ciclo de Maturidade")
+                st.markdown("#### Ciclo de Maturidade", help=TOOLTIPS["chart_maturidade"])
                 st.caption("Distribuição por idade das empresas.")
                 
                 df_maturity = db.get_maturity_profile(**mi_filters)
@@ -1364,7 +1394,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                     elif abs(corr) < 0.3: insight = "Sem Correlação Clara"
                     else: insight = "Correlação Moderada"
                     
-                    st.markdown(f"**Correlação (Abertura vs Produção):** {corr:.2f} ({insight})")
+                    st.metric("Correlação (Abertura vs Produção)", f"{corr:.2f}", insight, help=TOOLTIPS["kpi_correlacao"])
                     
                     # Chart
                     base = alt.Chart(df_chart).encode(x=alt.X('date:T', axis=alt.Axis(format='%Y'), title=None))
