@@ -11,9 +11,6 @@ from src.database import get_database
 from src.ui.dashboard import (
     render_structure_filters,
     render_macro_filters,
-    render_strategy_filters,
-    render_strategic_view, 
-    render_macro_view, 
     render_market_intelligence_view
 )
 from src.ui.footer import render_footer
@@ -52,16 +49,11 @@ def main():
         filters = render_macro_filters(db)
         render_macro_view(filters)
 
-    def page_strategy():
-       # st.header("3. Dinâmica Estratégica")
-        st.markdown("---")
-        filters = render_strategy_filters(db)
-        render_strategic_view(db, filters)
+
 
     # --- PAGES SETUP ---
     pg_struct = st.Page(page_structure, title="Estrutura de Mercado", icon=":material/domain:")
     pg_macro = st.Page(page_macro, title="Atividade Industrial", icon=":material/factory:")
-    pg_strat = st.Page(page_strategy, title="Dinâmica Estratégica", icon=":material/hub:")
 
     # --- SIDEBAR STRUCTURE (Manual Control) ---
     with st.sidebar:
@@ -82,7 +74,7 @@ def main():
         # 2. NAVIGATION (Custom Links using Page Objects)
         st.page_link(pg_struct, label="Estrutura de Mercado", icon=":material/domain:")
         st.page_link(pg_macro, label="Atividade Industrial", icon=":material/factory:")
-        st.page_link(pg_strat, label="Dinâmica Estratégica", icon=":material/hub:")
+
         
         st.divider()
         
@@ -101,7 +93,7 @@ def main():
             """)
         
     # --- NAVIGATION ROUTER (Hidden) ---
-    pg = st.navigation([pg_struct, pg_macro, pg_strat], position="hidden")
+    pg = st.navigation([pg_struct, pg_macro], position="hidden")
     
     pg.run()
 

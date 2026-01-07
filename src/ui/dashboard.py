@@ -899,7 +899,7 @@ def render_methodology_view():
 
     #### 3. Somente Filiais (Operacional)
     *   **Lógica:** Filtro `identificador_matriz_filial = '2'`.
-    *   **O que mostra:** Onde a produção e a operação física realmente acontecem (fábricas longe da sede).
+    *   **O que mostra:** Onde a produção e a operação física realmente acontecem (unidades industriais).
 
     ---
 
@@ -948,9 +948,9 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
 
     st.subheader("Estrutura de Mercado (Micro)")
     st.markdown("""
-    **Quem são os Players?**
+    **Quem são os Estabelecimentos?**
     Análise fundamentalista da base instalada (CNPJ). 
-    *Foco: Market Share, Concentração Geográfica e Solidez Financeira.*
+    *Foco: Market Share (Capital), Concentração Geográfica e Solidez.*
     """)
     
     with st.spinner("Processando Big Data..."):
@@ -975,7 +975,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
             # Data is now enriched directly in BigQuery for performance.
             
             if df_companies.empty:
-                st.warning("Nenhum player encontrado com os filtros atuais.")
+                st.warning("Nenhum estabelecimento encontrado com os filtros atuais.")
                 return
 
             # Format CNPJ
@@ -1005,7 +1005,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
 
             st.markdown("##### Indicadores Chave")
             k1, k2, k3, k4 = st.columns(4)
-            k1.metric("Total de Players", fmt_total, "Empresas Ativas")
+            k1.metric("Estabelecimentos Ativos", fmt_total, "Total em Operação")
             k2.metric("Capital Médio", fmt_cap, "Solidez Financeira")
             k3.metric("Setor Líder", leader_name, "Maior Volume")
             k4.metric("Concentração", f"{concentration:.1f}%", "Share do Top 1")
@@ -1076,7 +1076,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
             st.markdown("---")
 
             # --- SECTION 2: LEADERSHIP (Podium + Chart) ---
-            st.markdown("##### Liderança de Mercado")
+            st.markdown("##### Maiores Capacidades Instaladas (Capital Social)")
             
             # Fetch Top 100 for Ranking
             filters_rank = mi_filters.copy()
@@ -1089,7 +1089,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                  c_podium, c_chart = st.columns([1, 2])
                  
                  with c_podium:
-                     st.caption("**Top 3 Gigantes**")
+                     st.caption("**Top 3 (Matrizes)**")
                      for i in range(min(3, len(df_top100))):
                          row = df_top100.iloc[i]
                          val = row['capital_social']
@@ -1108,7 +1108,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                          x=alt.X('capital_social:Q', title='Capital (R$)', axis=alt.Axis(format=',.2s', grid=False)),
                          y=alt.Y('razao_social:N', sort='-x', title=None, axis=alt.Axis(labelLimit=200)),
                          color=alt.value('#3b82f6'),
-                         tooltip=['razao_social', 'capital_social']
+                         tooltip=['razao_social', alt.Tooltip('capital_social', title='Capital Social (R$)', format=',.2f')]
                      ).properties(height=280)
                      st.altair_chart(chart_rank, width="stretch")
             else:
@@ -1194,7 +1194,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
             st.divider()
 
             # 5. Detailed Asset List (Unified View - No Rank)
-            st.markdown("### Screen de Ativos (Geral)")
+            st.markdown("### Detalhamento da Base (Em Estoque)")
             
             df_disp = df_companies.copy()
             # Enrich Porte
