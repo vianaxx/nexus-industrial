@@ -1033,7 +1033,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                         tooltip=['uf', 'count']
                     ).properties(height=250, title="Top Estados")
                     
-                    geo_event = st.altair_chart(chart_geo, use_container_width=True, on_select="rerun", key="struct_geo")
+                    geo_event = st.altair_chart(chart_geo, width="stretch", on_select="rerun", key="struct_geo")
                 else:
                     st.info("Sem dados geográficos.")
                     geo_event = None
@@ -1048,7 +1048,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                         tooltip=['sector_code', 'count']
                     ).properties(height=250, title="Top Setores")
                     
-                    sec_event = st.altair_chart(chart_sec, use_container_width=True, on_select="rerun", key="struct_sec")
+                    sec_event = st.altair_chart(chart_sec, width="stretch", on_select="rerun", key="struct_sec")
                 else:
                     st.info("Sem dados setoriais.")
                     sec_event = None
