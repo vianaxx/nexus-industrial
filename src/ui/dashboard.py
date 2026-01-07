@@ -585,7 +585,11 @@ def render_macro_view(filters=None):
             
             # Row 1: Structural & Seasonal
             c1, c2, c3 = st.columns(3)
-            c1.metric("Índice (Base Fixa)", f"{metrics.get(k_idx_clean, 0):.2f}", "Base: 2022 = 100")
+            
+            idx_val = metrics.get(k_idx_clean, 0)
+            diff_base = idx_val - 100.0
+            c1.metric("Índice (Base Fixa)", f"{idx_val:.2f}", f"{diff_base:+.2f} pts (vs 2022)")
+            
             c2.metric("Índice (Sazonal)", f"{metrics.get(k_idx_saz, 0):.2f}", "Ajustado")
             c3.metric("Var. Mensal (Sazonal)", f"{metrics.get(k_mom_saz, 0):.2f}%", "Ritmo (Mês/Mês)")
             
@@ -772,23 +776,32 @@ def render_macro_view(filters=None):
                 df_pivot = df_snapshot.pivot(index='location', columns='variable', values='value').reset_index()
                 
                 if mom_key in df_pivot.columns and acc12_key in df_pivot.columns:
-                    c_scat, c_rank = st.columns([3, 2])
+                    
+                    # Pre-calculate color for highlighting (Actual Loc = Red, Others = Blue)
+                    df_pivot['color_base'] = df_pivot['location'].apply(lambda x: '#d62728' if x == actual_loc else '#3b82f6')
+
+                    # TOGGLE MODE: Advanced vs Simple
+                    st.markdown("#### Diagnóstico de Ciclo Econômico")
+                    view_mode = st.radio("Modo de Visualização:", ["Ranking de Desempenho (Simples)", "Mapa de Ciclo (Avançado)"], horizontal=True, label_visibility="collapsed")
                     
                     # CROSS-FILTERING SELECTION
                     click_sel = alt.selection_point(fields=['location'], name='select_loc')
                     
-                    with c_scat:
-                        st.markdown("#### Mapa de Ciclo Econômico")
-                        st.caption(f"Posicionamento dos Estados/Regiões em {latest_date_all.strftime('%m/%Y')} (Clique para Filtrar)")
+                    scatter_event = None
+                    rank_event = None
+
+                    if view_mode == "Mapa de Ciclo (Avançado)":
+                        st.caption(f"Mapa de Dispersão: Ritmo (Curto Prazo) vs Tendência (Longo Prazo) - {latest_date_all.strftime('%m/%Y')}")
                         
                         base_scat = alt.Chart(df_pivot).mark_circle(size=150, opacity=0.9).add_params(click_sel).encode(
                             x=alt.X(acc12_key, title='Tendência (Acum. 12m %)', axis=alt.Axis(grid=False)),
                             y=alt.Y(mom_key, title='Ritmo (Var. Mensal %)', axis=alt.Axis(grid=False)),
                             color=alt.condition(click_sel, 
-                                                alt.condition(alt.datum.location == actual_loc, alt.value('#d62728'), alt.value('#3b82f6')),
-                                                alt.value('lightgray')), # Dim unselected
+                                                alt.Color('color_base:N', scale=None, legend=None),
+                                                alt.value('lightgray')
+                            ),
                             tooltip=[alt.Tooltip('location'), alt.Tooltip(acc12_key, format='.2f'), alt.Tooltip(mom_key, format='.2f')]
-                        ).properties(height=400)
+                        ).properties(height=450)
                         
                         text_scat = base_scat.mark_text(align='left', dx=10, fontSize=11, fontWeight=600).encode(
                             text='location', 
@@ -799,32 +812,33 @@ def render_macro_view(filters=None):
                         rule_x = alt.Chart(pd.DataFrame({'x': [0]})).mark_rule(color='#94a3b8', strokeDash=[5,5]).encode(x='x')
                         rule_y = alt.Chart(pd.DataFrame({'y': [0]})).mark_rule(color='#94a3b8', strokeDash=[5,5]).encode(y='y')
                         
-                        # RENDER WITH INTERACTION
-                        scatter_event = st.altair_chart((base_scat + text_scat + rule_x + rule_y).interactive(), width="stretch", on_select="rerun", key="macro_scatter")
-                        
-                    with c_rank:
-                        st.markdown("#### Ranking de Desempenho (12m)")
-                        st.caption("Quem está crescendo mais?")
+                        # RENDER SCATTER (Selection output disabled for layered chart to prevent errors)
+                        st.altair_chart((base_scat + text_scat + rule_x + rule_y).interactive(), width="stretch")
+                        rank_event = None
+
+                    else:
+                        # SIMPLE RANKING VIEW
+                        st.caption(f"Ranking por Tendência de Longo Prazo (Acumulado 12m) - {latest_date_all.strftime('%m/%Y')}")
                         
                         rank_chart = alt.Chart(df_pivot).mark_bar().add_params(click_sel).encode(
-                            x=alt.X(acc12_key, title='%', axis=alt.Axis(grid=False)),
+                            x=alt.X(acc12_key, title='Crescimento Acumulado (%)', axis=alt.Axis(grid=False)),
                             y=alt.Y('location', sort='-x', title=None),
                             color=alt.condition(click_sel, 
-                                                alt.condition(alt.datum.location == actual_loc, alt.value('#d62728'), alt.value('#3b82f6')),
-                                                alt.value('lightgray')),
+                                                alt.Color('color_base:N', scale=None, legend=None),
+                                                alt.value('lightgray')
+                            ),
                             tooltip=[alt.Tooltip('location'), alt.Tooltip(acc12_key, format='.2f')]
-                        ).properties(height=400)
+                        ).properties(height=500)
                         
-                        # RENDER WITH INTERACTION
+                        # RENDER RANKING
                         rank_event = st.altair_chart(rank_chart, width="stretch", on_select="rerun", key="macro_rank")
+                        scatter_event = None
 
                     # --- HANDLE SELECTION EVENTS ---
-                    # Check which chart triggered the event
                     selected_loc = None
-                    
-                    if scatter_event.selection.get('select_loc'):
+                    if scatter_event and scatter_event.selection.get('select_loc'):
                         selected_loc = scatter_event.selection['select_loc'][0]['location']
-                    elif rank_event.selection.get('select_loc'):
+                    elif rank_event and rank_event.selection.get('select_loc'):
                         selected_loc = rank_event.selection['select_loc'][0]['location']
                         
                     if selected_loc:
@@ -1113,7 +1127,8 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                      st.altair_chart(chart_rank, width="stretch")
             else:
                 st.info("Ranking indisponível para esta seleção.")
-
+                
+            st.caption("⚠️ **Nota de Leitura:** O ranking baseia-se no **Capital Social** (Investimento/Capacidade), e não no Faturamento/Receita.")
             st.markdown("---")
 
             st.divider()

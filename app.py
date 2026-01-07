@@ -11,6 +11,7 @@ from src.database import get_database
 from src.ui.dashboard import (
     render_structure_filters,
     render_macro_filters,
+    render_macro_view,
     render_market_intelligence_view
 )
 from src.ui.footer import render_footer
