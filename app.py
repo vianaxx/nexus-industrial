@@ -76,8 +76,7 @@ def main():
         </div>
         """, unsafe_allow_html=True)
         
-        st.divider()
-        st.caption("v2.3.1 (Reparo Deploy)")
+
 
 
         # 2. NAVIGATION (Custom Links using Page Objects)
@@ -117,7 +116,6 @@ def main():
                 • IBGE (PIM-PF)
             </div>
             <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 8px;">
-                v2.3.1 (Reparo Deploy)<br>
                 © 2024 Nexus Intelligence
             </div>
         </div>
