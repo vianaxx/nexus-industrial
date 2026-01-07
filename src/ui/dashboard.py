@@ -1116,77 +1116,6 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
 
             st.markdown("---")
 
-            # 4. Contexto Industrial (Análise Detalhada)
-            st.markdown("### Análise Industrial Detalhada")
-            st.markdown("Visão aprofundada da distribuição geográfica e setorial dos players.")
-
-            # Row 1: Setorial (Full Width for Readability)
-            st.markdown("#### Distribuição por Setor (Top 10)")
-            st.caption("Volume de empresas por atividade principal (CNAE). Onde há maior concentração de negócios?")
-            
-            if not df_sectors.empty:
-                # Enrich Labels
-                df_divs = get_options_cached(db, 'get_industrial_divisions')
-                if not df_divs.empty:
-                    df_sectors = df_sectors.merge(df_divs, left_on='sector_code', right_on='division_code', how='left')
-                    df_sectors['label'] = df_sectors['label'].fillna(df_sectors['sector_code'])
-                else:
-                    df_sectors['label'] = df_sectors['sector_code']
-            
-                chart_sec = alt.Chart(df_sectors.head(10)).mark_bar().encode(
-                    x=alt.X('count:Q', title='Quantidade de Empresas', axis=alt.Axis(grid=True)),
-                    y=alt.Y('label:N', sort='-x', title=None, axis=alt.Axis(labelLimit=300)),
-                    color=alt.Color('count:Q', legend=None, scale=alt.Scale(scheme='greens')),
-                    tooltip=[
-                        alt.Tooltip('sector_code', title='Cód'),
-                        alt.Tooltip('label', title='Setor'),
-                        alt.Tooltip('count', title='Volume', format=',d')
-                    ]
-                ).properties(height=400)
-                st.altair_chart(chart_sec, width="stretch")
-            else:
-                st.info("Sem dados setoriais disponíveis.")
-
-            st.divider()
-
-            # Row 2: Geographic Comparison (Side by Side)
-            c_hub, c_pol = st.columns(2)
-            
-            with c_hub:
-                st.markdown("#### Hubs Estaduais (Top 10)")
-                st.caption("Concentração por Unidade Federativa.")
-                
-                df_states = db.get_geo_distribution(**mi_filters)
-                if not df_states.empty:
-                    chart_states = alt.Chart(df_states.head(10)).mark_arc(outerRadius=120).encode(
-                        theta=alt.Theta("count", stack=True),
-                        color=alt.Color("uf", title="Estado"),
-                        order=alt.Order("count", sort="descending"),
-                        tooltip=["uf", alt.Tooltip("count", title="Empresas", format=",d")]
-                    ).properties(height=350, title='Ranking Estadual')
-                    st.altair_chart(chart_states, width="stretch")
-                else:
-                    st.info("Sem dados regionais.")
-
-            with c_pol:
-                st.markdown("#### Pólos Municipais (Top 10)")
-                st.caption("Cidades com maior densidade empresarial.")
-                
-                df_cities = db.get_city_distribution(**mi_filters)
-                if not df_cities.empty:
-                    chart_cities = alt.Chart(df_cities.head(10)).mark_bar().encode(
-                        x=alt.X('count:Q', title='Volume', axis=alt.Axis(format='d')),
-                        y=alt.Y('city:N', sort='-x', title=None, axis=alt.Axis(labelLimit=150)),
-                        color=alt.value('#2ca02c'), # Greenish
-                        tooltip=[
-                            alt.Tooltip('city', title='Município'),
-                            alt.Tooltip('count', title='Empresas', format=',d')
-                        ]
-                    ).properties(height=350, title='Ranking Municipal')
-                    st.altair_chart(chart_cities, width="stretch")
-                else:
-                    st.info("Sem dados municipais.")
-
             st.divider()
 
             # 4.5 Qualitative Profile (Maturity & Sophistication)
@@ -1377,6 +1306,65 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                 },
                 hide_index=True
             )
+
+            # --- SECTION 6: DYNAMICS (Moved from Strategy Page to enforce Structure -> Flow) ---
+            st.divider()
+            st.subheader("Dinâmica Recente (Fluxo)")
+            
+            # 1. Fetch Company Trend (Micro)
+            trend_filters = filters.copy()
+            trend_filters.pop('limit', None)
+            df_trend = db.get_opening_trend(**trend_filters)
+            
+            # 2. Fetch IBGE Data (Macro)
+            df_ibge = fetch_industry_data()
+            
+            has_correlation = False
+            
+            if not df_trend.empty and not df_ibge.empty:
+                # Prepare Micro Data
+                df_micro = df_trend.copy()
+                df_micro['date'] = pd.to_datetime(df_micro['month_year'], format='%Y%m')
+                df_micro = df_micro.groupby('date')['count'].sum()
+                
+                # Prepare Macro Data
+                df_macro_raw = df_ibge[df_ibge['variable'].str.contains('Índice', na=False)].copy()
+                df_macro = df_macro_raw.groupby('date')['value'].mean()
+                
+                # Align
+                common_idx = df_micro.index.intersection(df_macro.index).sort_values()
+                
+                if len(common_idx) > 6:
+                    has_correlation = True
+                    df_chart = pd.DataFrame({
+                        'date': common_idx,
+                        'Novas Empresas': df_micro.loc[common_idx].values,
+                        'Indústria (IBGE)': df_macro.loc[common_idx].values
+                    })
+                    
+                    corr = df_chart['Novas Empresas'].corr(df_chart['Indústria (IBGE)'])
+                    
+                    if corr > 0.7: insight = "Forte Correlação Positiva"
+                    elif corr < -0.7: insight = "Forte Correlação Negativa"
+                    elif abs(corr) < 0.3: insight = "Sem Correlação Clara"
+                    else: insight = "Correlação Moderada"
+                    
+                    st.markdown(f"**Correlação (Abertura vs Produção):** {corr:.2f} ({insight})")
+                    
+                    # Chart
+                    base = alt.Chart(df_chart).encode(x=alt.X('date:T', axis=alt.Axis(format='%Y'), title=None))
+                    line_micro = base.mark_line(color='#ff7f0e').encode(y=alt.Y('Novas Empresas', axis=alt.Axis(titleColor='#ff7f0e')))
+                    line_macro = base.mark_line(color='#1f77b4', strokeDash=[5,5]).encode(y=alt.Y('Indústria (IBGE)', axis=alt.Axis(titleColor='#1f77b4')))
+                    
+                    st.altair_chart((line_micro + line_macro).resolve_scale(y='independent'), width="stretch")
+            
+            if not has_correlation and not df_trend.empty:
+                 # Fallback Trend Only
+                 chart_fb = alt.Chart(df_trend).mark_line(point=True, color='#ff7f0e').encode(
+                     x=alt.X('month_year:O', title='Mês'),
+                     y=alt.Y('count:Q', title='Novas Empresas')
+                 )
+                 st.altair_chart(chart_fb, width="stretch")
 
         except Exception as e:
             st.error(f"Erro na análise de mercado: {e}")
