@@ -1187,6 +1187,12 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                 else:
                     st.info("Sem dados municipais.")
 
+            # Sidebar
+            with st.sidebar:
+                st.header("Nexus Industrial")
+                st.caption("v2.3.1 (Fixes Applied)")
+                st.divider()
+
             st.divider()
 
             # 4.5 Qualitative Profile (Maturity & Sophistication)
