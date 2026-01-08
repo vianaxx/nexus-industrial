@@ -17,9 +17,22 @@ def get_options_cached(_db, method_name):
 
 @st.cache_data
 def get_cnae_hierarchy_cached():
-    path = "src/data/cnae_hierarchy.csv"
+    path = "data/processed/dim_cnae.parquet"
     if os.path.exists(path):
-        return pd.read_csv(path, dtype=str)
+        df = pd.read_parquet(path)
+        # Create compatibility columns for existing logic
+        df['divisao_code'] = df['id_divisao']
+        df['div_label'] = df['id_divisao'] + " - " + df['desc_divisao']
+        
+        df['grupo_code'] = df['id_grupo']
+        df['grp_label'] = df['id_grupo'] + " - " + df['desc_grupo']
+        
+        df['classe_code'] = df['id_classe']
+        df['cls_label'] = df['id_classe'] + " - " + df['desc_classe']
+
+        # Ensure strings
+        df['id_subclasse'] = df['id_subclasse'].astype(str)
+        return df
     return pd.DataFrame()
 
 def generate_structural_summary(key_suffix: str) -> str:
@@ -87,6 +100,8 @@ def _render_common_geo_activity(db: CNPJDatabase, key_suffix: str):
             sel_city_names = st.multiselect("Municípios", muni_opts, placeholder="Todas", key=f"city_{key_suffix}")
             if sel_city_names:
                 sel_city_codes = df_muni[df_muni['descricao'].isin(sel_city_names)]['codigo'].tolist()
+        else:
+            st.warning("Lista de Municípios indisponível (Erro de Carregamento)")
     
     # Dividers removed for clean layout
 
@@ -123,6 +138,14 @@ def _render_common_geo_activity(db: CNPJDatabase, key_suffix: str):
             
         # Filter Hierarchy DF
         df_filtered = df_hier[df_hier['divisao_code'].isin(allowed_divs)]
+
+        # --- SCOPE ENFORCEMENT FIX: Hard-limit to Industrial Range (05-33) ---
+        # This ensures Agriculture (01-03) and Services (34+) don't appear in top filters
+        try:
+             df_filtered = df_filtered[
+                pd.to_numeric(df_filtered['divisao_code'], errors='coerce').fillna(0).astype(int).between(5, 33)
+             ]
+        except: pass
         
         st.markdown("##### Estudo Setorial (Hierarquia CNAE)")
         c_h1, c_h2, c_h3 = st.columns(3)
@@ -177,39 +200,32 @@ def render_structure_filters(db: CNPJDatabase) -> dict:
         
         # 1.1 CNAE Specific (Subclass - Final Level)
         sel_cnaes = []
-        df_cnae_all = get_options_cached(db, 'get_all_cnaes')
+        df_hier = get_cnae_hierarchy_cached()
         
-        if not df_cnae_all.empty:
+        if not df_hier.empty:
             # SCOPE ENFORCEMENT: 05-33
             try:
-                df_cnae_all = df_cnae_all[
-                    pd.to_numeric(df_cnae_all['codigo'].str.slice(0, 2), errors='coerce').fillna(0).astype(int).between(5, 33)
-                ]
-            except: pass
+                # Filter by numeric range of Division
+                df_cnae_all = df_hier[
+                    pd.to_numeric(df_hier['id_divisao'], errors='coerce').fillna(0).astype(int).between(5, 33)
+                ].copy()
+            except:
+                df_cnae_all = df_hier.copy()
 
             # Dependent Filtering (Based on Hierarchy)
             if sel_classes:
-                 # Match Class code (5 digits)
-                 df_codes = df_cnae_all['codigo'].str.replace(r'[^0-9]', '', regex=True)
-                 mask = df_codes.str.slice(0, 5).isin(sel_classes)
+                 mask = df_cnae_all['id_classe'].isin(sel_classes)
                  df_cnae_all = df_cnae_all[mask]
             elif sel_groups:
-                 # Match Group code (3 digits)
-                 df_codes = df_cnae_all['codigo'].str.replace(r'[^0-9]', '', regex=True)
-                 mask = df_codes.str.slice(0, 3).isin(sel_groups)
+                 mask = df_cnae_all['id_grupo'].isin(sel_groups)
                  df_cnae_all = df_cnae_all[mask]
-            elif sel_sectors: # sel_sectors is sel_divs from _render_common
-                 # Match Division code (2 digits)
-                 # Note: sel_sectors contains '05', '10', etc.
-                 df_codes = df_cnae_all['codigo'].str.replace(r'[^0-9]', '', regex=True)
-                 mask = df_codes.str.slice(0, 2).isin(sel_sectors)
+            elif sel_sectors: 
+                 mask = df_cnae_all['id_divisao'].isin(sel_sectors)
                  df_cnae_all = df_cnae_all[mask]
 
             # Formatting
-            cnae_opts = df_cnae_all.apply(
-                lambda x: f"{format_cnae(x['codigo'])} - {x['descricao']}", 
-                axis=1
-            ).tolist()
+            # Use raw ID from parquet for display
+            cnae_opts = sorted((df_cnae_all['id_subclasse'] + " - " + df_cnae_all['desc_subclasse']).unique().tolist())
             
             sel_cnaes_ui = st.multiselect(
                 "4. Subclasse (Atividade Específica)", 
@@ -221,7 +237,9 @@ def render_structure_filters(db: CNPJDatabase) -> dict:
             )
             
             if sel_cnaes_ui:
-                sel_cnaes = [c.split(" - ")[0].replace(".", "").replace("-", "").replace("/", "") for c in sel_cnaes_ui]
+                sel_cnaes = [c.split(" - ")[0] for c in sel_cnaes_ui]
+                # Metadata logic moved to render_dashboard for Header Card placement
+                            
         else:
             st.warning("Lista de CNAEs indisponível.")
         
@@ -258,13 +276,38 @@ def render_structure_filters(db: CNPJDatabase) -> dict:
 
 
 def render_macro_filters(db: CNPJDatabase) -> dict:
-    """Filters for 'Atividade Macro' (Focus on Geo/Sector)."""
+    """Filters for 'Atividade Macro' (Focus on Geo/Sector - PIM-PF Scope)."""
     with st.expander("Filtros Regionais e Setoriais", expanded=False):
-        sel_ufs, sel_city_codes, sel_sectors, sel_groups, sel_classes = _render_common_geo_activity(db, "macro")
+        # 1. Geography (States Only, PIM-PF doesn't have City level)
+        states = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"]
+        sel_ufs = st.multiselect("Estados (Regionais)", states, key="ufs_macro")
         
+        # 2. Sectoral (Divisions Only, PIM-PF doesn't have Classes)
+        # Fetch Hierarchy just for Division Labels
+        df_hier = get_cnae_hierarchy_cached()
+        sel_sectors = []
+        
+        if not df_hier.empty:
+            # Filter for Industrial Range (05-33)
+            try:
+                 df_filtered = df_hier[
+                    pd.to_numeric(df_hier['divisao_code'], errors='coerce').fillna(0).astype(int).between(5, 33)
+                 ]
+                 div_opts = sorted(df_filtered['div_label'].unique().tolist())
+                 
+                 st.markdown("##### Seleção de Setor (PIM-PF)")
+                 sel_div_labels = st.multiselect("Setor Industrial (CNAE Divisão)", div_opts, placeholder="Indústria Geral (Todos)", key="div_macro")
+                 
+                 if sel_div_labels:
+                     sel_sectors = [s.split(" - ")[0] for s in sel_div_labels]
+            except: pass
+            
+        st.caption("ℹ️ **Nota:** O IBGE (PIM-PF Real) fornece dados apenas nível de UFs e Divisões CNAE (2 dígitos).")
+
+    # Return simplified structure (Groups/Classes empty)
     return {
-        "ufs": sel_ufs, "municipio_codes": sel_city_codes, "sectors": sel_sectors,
-        "groups": sel_groups, "classes": sel_classes,
+        "ufs": sel_ufs, "municipio_codes": [], "sectors": sel_sectors,
+        "groups": [], "classes": [],
         "portes": ["05"], "branch_mode": "Todos", "limit": 1000, "only_active": True,
         "min_capital": 0.0, "max_capital": None, "date_start": None, "date_end": None
     }
@@ -326,8 +369,15 @@ def render_strategic_view(db: CNPJDatabase, filters):
                     'Indústria (IBGE)': df_macro.loc[common_idx].values
                 })
                 
-                # Calculate Correlation
-                corr = df_chart['Novas Empresas'].corr(df_chart['Indústria (IBGE)'])
+                # Calculate Correlation with Safeguard
+                try:
+                    if df_chart['Novas Empresas'].nunique() <= 1 or df_chart['Indústria (IBGE)'].nunique() <= 1:
+                        corr = 0.0
+                    else:
+                        corr = df_chart['Novas Empresas'].corr(df_chart['Indústria (IBGE)'])
+                        if pd.isna(corr): corr = 0.0
+                except:
+                    corr = 0.0
                 
                 # Insight Text
                 if corr > 0.7: insight = "Forte Correlação Positiva"
@@ -356,7 +406,7 @@ def render_strategic_view(db: CNPJDatabase, filters):
 
                 # --- DUAL AXIS CHART ---
                 st.markdown("### Cruzamento de Tendências")
-                st.caption("Comparativo entre a abertura de empresas (no seu filtro) e a Produção Industrial Nacional.")
+                st.caption("Comparativo entre a abertura de empresas (no seu filtro) e a Produção Industrial Nacional.", help=TOOLTIPS["chart_evolution"])
                 
                 base = alt.Chart(df_chart).encode(x=alt.X('date:T', axis=alt.Axis(format='%Y'), title=None))
                 
@@ -391,6 +441,7 @@ def render_strategic_view(db: CNPJDatabase, filters):
             # FALLBACK VIEW
             if not df_trend.empty:
                 st.markdown("##### Tendência de Abertura Identificada")
+                st.caption("Evolução histórica de novos CNPJs.", help=TOOLTIPS["chart_evolution"])
                 
                 # Prepare Data
                 df_fb = df_trend.copy()
@@ -461,7 +512,7 @@ def render_educational_guide():
         """)
 
 def render_macro_view(filters=None):
-    st.subheader("Atividade Industrial (Macro)")
+    # st.subheader("Atividade Industrial (Macro)") removed as it's now in app.py
     
     # 1. Determine Intended Location
     intended_loc = "Brasil"
@@ -495,13 +546,13 @@ def render_macro_view(filters=None):
         # 3. Render Header with ACTUAL location & Sector
         sector_display = f"do setor **{intended_sector}**" if intended_sector else "da **Indústria Geral**"
         
-        st.markdown(f"""
-        **O que Produz?**
-        Monitoramos o volume físico produzido {sector_display} para **{actual_loc}**.
-        *Esta visão serve como **Benchmark { 'Regional' if actual_loc != 'Brasil' else 'Nacional' }** de atividade.*
-        """)
+        info_text = f"""
+        **Escopo da Análise:** Monitoramento do volume físico produzido {sector_display} para **{actual_loc}**.  
+        *Referência: Benchmark { 'Regional' if actual_loc != 'Brasil' else 'Nacional' } de atividade (PIM-PF).*
+        """
+        st.info(info_text, icon="📉")
         
-        render_educational_guide()
+        # render_educational_guide() MOVED TO BOTTOM
         
         # 4. Context/Status Messages
         if filters:
@@ -511,23 +562,23 @@ def render_macro_view(filters=None):
              is_region_synced = (is_regional_intent and actual_loc == intended_loc)
              
              if is_sector_synced and is_region_synced:
-                 st.success(f"Sincronia Total: Exibindo produção de **{intended_sector}** em **{actual_loc}**.")
+                 pass # Standard behavior, header already explains it.
              elif is_sector_synced:
                  if is_regional_intent:
-                     st.warning(f"Sincronia Parcial: Exibindo setor **{intended_sector}**, mas dados regionais para **{intended_loc}** não existem no IBGE. Mostrando BRASIL.")
+                     st.warning(f"⚠️ **Atenção:** IBGE não divulga dados de **{intended_sector}** para **{intended_loc}**. Exibindo média nacional (Brasil).")
                  else:
-                     st.success(f"Sincronia Setorial: Exibindo produção nacional de **{intended_sector}**.")
+                     pass # Standard sector view
              elif is_region_synced:
-                 st.success(f"Sincronia Regional: Exibindo Indústria Geral de **{actual_loc}**.")
-                 if filters.get('sectors'):
-                     st.info(f"Nota: Vários setores selecionados. Exibindo Média Geral da Indústria.")
+                 # Region match, but Sector mismatch (likely multiple or none)
+                 if filters.get('sectors') and len(filters['sectors']) > 1:
+                     st.warning(f"⚠️ **Múltiplos Setores:** O IDGE não agrega múltiplos setores. Exibindo **Média Geral da Indústria** para {actual_loc}.")
              else:
                  filter_list = []
                  if filters.get('ufs'): filter_list.append(f"Região ({', '.join(filters['ufs'])})")
                  if filters.get('sectors'): filter_list.append("Setores")
                  
                  if filter_list and not (is_sector_synced or is_region_synced):
-                      st.info(f"Modo Benchmark Geral: Você filtrou por **{' + '.join(filter_list)}**, mas este gráfico exibe **Indústria Geral / Brasil**.")
+                      st.info(f"ℹ️ **Modo Benchmark:** Sua seleção ({' + '.join(filter_list)}) não possui série histórica direta. O gráfico exibe **Indústria Geral / Brasil**.")
 
         # 5. Render Charts
         if not df_ibge.empty:
@@ -553,34 +604,36 @@ def render_macro_view(filters=None):
                 # Format Dates for Dropdown
                 date_opts = [d.strftime('%m/%Y') for d in available_dates]
                 
-                # UI: Date Selector
-                c_sel, c_blank = st.columns([1, 4])
-                with c_sel:
-                    sel_str = st.selectbox("Selecione o Período", date_opts, index=0)
-                
-                # Back to logic
-                selected_date = pd.to_datetime(sel_str, format='%m/%Y')
+            # UI: Compact Date Toolbar
+            with st.container():
+                 c_toolbar_1, c_toolbar_2 = st.columns([1, 2])
+                 
+                 with c_toolbar_1:
+                     sel_str = st.selectbox("📅 Período de Análise", date_opts, index=0)
+                     selected_date = pd.to_datetime(sel_str, format='%m/%Y')
+
+                 with c_toolbar_2:
+                     if selected_date:
+                        ref_date_str = selected_date.strftime('%B/%Y').capitalize()
+                        is_latest = (selected_date == available_dates[0])
+                        status_color = "#10b981" if is_latest else "#f59e0b" # Green vs Amber
+                        status_text = "DADOS MAIS RECENTES" if is_latest else "HISTÓRICO"
+                        
+                        st.markdown(f"""
+                        <div style="display: flex; align-items: center; height: 100%; padding-top: 15px;">
+                            <span style="background-color: {status_color}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; margin-right: 10px;">{status_text}</span>
+                            <span style="font-size: 1.1rem; font-weight: 600; color: #334155;">{ref_date_str}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
             
+            st.markdown("---") # Separation before KPIs
+
             # 2. Get Metrics for SELECTED Date (Manually)
             metrics = {}
             if selected_date and not loc_df.empty:
                 current_data = loc_df[loc_df['date'] == selected_date]
                 for _, row in current_data.iterrows():
                     metrics[row['variable']] = row['value']
-            
-            if selected_date:
-                # Prominent Reference Date Display
-                ref_date_str = selected_date.strftime('%m/%Y')
-                is_latest = (selected_date == available_dates[0])
-                note = "(Dados mais recentes)" if is_latest else "(Histórico selecionado)"
-                
-                st.markdown(f"""
-                <div style="background-color: var(--secondary-background-color); padding: 12px; border-radius: 8px; margin-bottom: 24px; border-left: 4px solid var(--primary-color); box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                    <span style="font-size: 0.9em; font-weight: 600; opacity: 0.8;">Mês de Referência (IBGE):</span>
-                    <span style="font-size: 1.1em; font-weight: 700; margin-left: 8px;">{ref_date_str}</span>
-                    <span style="font-size: 0.85em; opacity: 0.7; margin-left: 10px;">{note} • {actual_loc}</span>
-                </div>
-                """, unsafe_allow_html=True)
             
             # --- SECTION 1: KPIS (Standardized Grid) ---
             st.markdown("##### Indicadores Chave")
@@ -592,7 +645,7 @@ def render_macro_view(filters=None):
             diff_base = idx_val - 100.0
             c1.metric("Índice (Base Fixa)", f"{idx_val:.2f}", f"{diff_base:+.2f} pts (vs 2022)", help=TOOLTIPS["kpi_indice_base"])
             
-            c2.metric("Índice (Sazonal)", f"{metrics.get(k_idx_saz, 0):.2f}", "Ajustado")
+            c2.metric("Índice (Sazonal)", f"{metrics.get(k_idx_saz, 0):.2f}", "Ajustado", help=TOOLTIPS["kpi_indice_base"]) # Conceptually similar to base
             c3.metric("Var. Mensal (Sazonal)", f"{metrics.get(k_mom_saz, 0):.2f}%", "Ritmo (Mês/Mês)", help=TOOLTIPS["kpi_ritmo"])
             
             # Row 2: Variações de Longo Prazo
@@ -601,7 +654,7 @@ def render_macro_view(filters=None):
             
             c4, c5, c6 = st.columns(3)
             c4.metric("Var. Mensal (YoY)", f"{metrics.get(k_mom_yoy, 0):.2f}%", "Out/25 vs Out/24", help=TOOLTIPS["kpi_yoy"])
-            c5.metric("Acumulado no Ano", f"{metrics.get(k_acc_year, 0):.2f}%", "Jan até Atual")
+            c5.metric("Acumulado no Ano", f"{metrics.get(k_acc_year, 0):.2f}%", "Jan até Atual", help=TOOLTIPS["kpi_tendencia"]) # Reusing trend logic or add specific
             c6.metric("Acumulado 12 Meses", f"{metrics.get(k_acc_12m, 0):.2f}%", "Tendência (Longo Prazo)", help=TOOLTIPS["kpi_tendencia"])
             
             st.markdown("---")
@@ -699,56 +752,11 @@ def render_macro_view(filters=None):
                 ).properties(height=280)
                 st.altair_chart(area_trend, width="stretch")
 
-            # Row 2: Annual Performance
+            # Row 2: The Physical Level (Promoted from bottom)
             st.divider()
             
-            c_yoy, c_year = st.columns(2)
-            
-            with c_yoy:
-                st.markdown("#### Comparativo Anual (YoY)", help=TOOLTIPS["kpi_yoy"])
-                st.caption("Variação vs Mesmo Mês Ano Anterior")
-                
-                df_yoy = df_ibge[ (df_ibge['variable'] == k_mom_yoy) & (df_ibge['location'] == actual_loc) ]
-                df_yoy = filter_by_timeframe(df_yoy)
-                
-                bar_yoy = alt.Chart(df_yoy).mark_bar().encode(
-                    x=alt.X('date:T', axis=alt.Axis(format='%b/%y', labelAngle=-45), title=None),
-                    y=alt.Y('value:Q', title='%'),
-                    color=alt.condition(alt.datum.value > 0, alt.value('#2ca02c'), alt.value('#d62728')),
-                    tooltip=[alt.Tooltip('date:T', format='%b/%Y'), alt.Tooltip('value', format='.2f')]
-                ).properties(height=250)
-                st.altair_chart(bar_yoy, width="stretch")
-# ...
-# ... Skipping unrelated lines
-# ...
-                if mom_key in df_pivot.columns and acc12_key in df_pivot.columns:
-                    
-                    # Pre-calculate color for highlighting (Actual Loc = Red, Others = Blue)
-                    df_pivot['color_base'] = df_pivot['location'].apply(lambda x: '#d62728' if x == actual_loc else '#3b82f6')
-
-                    # TOGGLE MODE: Advanced vs Simple
-                    st.markdown("#### Diagnóstico de Ciclo Econômico", help=TOOLTIPS["chart_scatter"])
-                    view_mode = st.radio("Modo de Visualização:", ["Ranking de Desempenho (Simples)", "Mapa de Ciclo (Avançado)"], horizontal=True, label_visibility="collapsed")
-
-            with c_year:
-                st.markdown("#### Acumulado no Ano")
-                st.caption("Desempenho no ano calendário corrente.")
-                
-                df_year = df_ibge[ (df_ibge['variable'] == k_acc_year) & (df_ibge['location'] == actual_loc) ]
-                df_year = filter_by_timeframe(df_year)
-                
-                line_year = alt.Chart(df_year).mark_line(color='#9467bd', strokeWidth=3).encode(
-                    x=alt.X('date:T', axis=alt.Axis(format='%b/%y', labelAngle=-45), title=None),
-                    y=alt.Y('value:Q', title='%'),
-                    tooltip=[alt.Tooltip('date:T', format='%b/%Y'), alt.Tooltip('value', format='.2f')]
-                ).properties(height=250)
-                st.altair_chart(line_year, width="stretch")
-
-            st.divider()
-
-            # --- SECTION 3: STRUCTURAL DIAGNOSIS ---
-            st.markdown(f"#### Nível da Atividade - {actual_loc}")
-            st.caption("Índice de Base Fixa (2022=100) - Mostra o volume físico real produzido.")
+            st.markdown(f"#### Nível de Atividade Real - {actual_loc}")
+            st.caption("Índice de Base Fixa (2022=100) - Mostra o volume físico real produzido (A Prova Real).")
 
             valid_locs = [actual_loc]
             if actual_loc != "Brasil":
@@ -774,25 +782,42 @@ def render_macro_view(filters=None):
                     tooltip=[alt.Tooltip('date:T', format='%b/%Y'), alt.Tooltip('value', format='.2f')]
                 )
 
-            chart_ibge = chart_ibge.properties(height=400).interactive()
+            chart_ibge = chart_ibge.properties(height=350).interactive()
             st.altair_chart(chart_ibge, width="stretch")
 
-            # --- PRO LEVEL: SCATTER & RANKING ---
+            # --- SECTION 3: COMPETITIVE LANDSCAPE ---
             st.markdown("---")
-            st.subheader("Diagnóstico Estrutural (Visão Panorâmica)")
-            st.markdown("Onde sua seleção se encaixa no cenário nacional? Compare com outros estados/setores.")
+            st.subheader("Ranking de Competitividade Regional")
+            st.markdown("Onde sua seleção se encaixa no cenário nacional? Compare com outros estados.")
             
-            latest_date_all = df_ibge['date'].max()
-            df_snapshot = df_ibge[df_ibge['date'] == latest_date_all].copy()
+            # Logic: Handle Data Lag (National vs Regional release dates)
+            # Sometimes National data (Brasil) is released before Regional.
+            # We iterate backwards to find a date with regional coverage.
+            unique_dates = sorted(df_ibge['date'].unique(), reverse=True)
+            df_pivot = pd.DataFrame()
             
-            if not df_snapshot.empty:
-                df_pivot = df_snapshot.pivot(index='location', columns='variable', values='value').reset_index()
-                
-                if mom_key in df_pivot.columns and acc12_key in df_pivot.columns:
-                    
+            for d in unique_dates[:3]: # Try latest 3 months
+                snapshot = df_ibge[df_ibge['date'] == d].copy()
+                # Use nunique() because dataframe is long-format (multiple vars per location)
+                if snapshot['location'].nunique() > 1:
+                    df_pivot = snapshot.pivot(index='location', columns='variable', values='value').reset_index()
+                    latest_date_all = d # Update reference date for the title
+                    break
+            
+            # Fallback if loop finishes without success (df_pivot still empty or 1 row?)
+            # If we didn't find a multipoint snapshot, check the very first one just to show *something* or fail.
+            if df_pivot.empty:
+                 # Default to latest just to have variables checked
+                 latest_date_all = unique_dates[0]
+                 snapshot = df_ibge[df_ibge['date'] == latest_date_all].copy()
+                 df_pivot = snapshot.pivot(index='location', columns='variable', values='value').reset_index()
+
+            if mom_key in df_pivot.columns and acc12_key in df_pivot.columns:
+                # Check for minimal data volume for ranking
+                if len(df_pivot) > 1:
                     # Pre-calculate color for highlighting (Actual Loc = Red, Others = Blue)
                     df_pivot['color_base'] = df_pivot['location'].apply(lambda x: '#d62728' if x == actual_loc else '#3b82f6')
-
+                    
                     # TOGGLE MODE: Advanced vs Simple
                     st.markdown("#### Diagnóstico de Ciclo Econômico")
                     view_mode = st.radio("Modo de Visualização:", ["Ranking de Desempenho (Simples)", "Mapa de Ciclo (Avançado)"], horizontal=True, label_visibility="collapsed")
@@ -825,14 +850,15 @@ def render_macro_view(filters=None):
                         rule_x = alt.Chart(pd.DataFrame({'x': [0]})).mark_rule(color='#94a3b8', strokeDash=[5,5]).encode(x='x')
                         rule_y = alt.Chart(pd.DataFrame({'y': [0]})).mark_rule(color='#94a3b8', strokeDash=[5,5]).encode(y='y')
                         
-                        # RENDER SCATTER (Selection output disabled for layered chart to prevent errors)
+                        # RENDER SCATTER
+                        # Note: on_select="rerun" disabled for Layered Chart due to Altair limitation with multi-views
                         st.altair_chart((base_scat + text_scat + rule_x + rule_y).interactive(), width="stretch")
+                        scatter_event = None
                         rank_event = None
 
                     else:
                         # SIMPLE RANKING VIEW
                         st.caption(f"Ranking por Tendência de Longo Prazo (Acumulado 12m) - {latest_date_all.strftime('%m/%Y')}")
-                        
                         rank_chart = alt.Chart(df_pivot).mark_bar().add_params(click_sel).encode(
                             x=alt.X(acc12_key, title='Crescimento Acumulado (%)', axis=alt.Axis(grid=False)),
                             y=alt.Y('location', sort='-x', title=None),
@@ -846,7 +872,7 @@ def render_macro_view(filters=None):
                         # RENDER RANKING
                         rank_event = st.altair_chart(rank_chart, width="stretch", on_select="rerun", key="macro_rank")
                         scatter_event = None
-
+                    
                     # --- HANDLE SELECTION EVENTS ---
                     selected_loc = None
                     if scatter_event and scatter_event.selection.get('select_loc'):
@@ -863,14 +889,21 @@ def render_macro_view(filters=None):
                             # Or toggle? Let's use replacement for now (Focus behavior)
                             st.session_state['ufs_macro'] = [uf_code]
                             st.rerun()
-                            
+
                 else:
-                    st.info("Dados insuficientes para gerar o Mapa de Ciclo (Scatter).")
+                    label_sector = intended_sector if intended_sector else "Indústria Geral"
+                    st.info(f"📍 **Ranking Regional Indisponível:** Para o setor selecionado ({label_sector}), o IBGE disponibiliza apenas a média nacional ou dados insuficientes para comparação regional.")
+            else:
+                st.info("Dados insuficientes (colunas/indicadores) para gerar o Ranking/Diagnóstico.")
         else:
             st.warning("Dados do IBGE indisponíveis no momento.")
 
     except Exception as e:
         st.error(f"Erro ao carregar dados macro: {e}")
+
+    # GUIDE MOVED HERE
+    st.divider()
+    render_educational_guide()
 
 def render_methodology_view():
     st.subheader("4. Framework Metodológico (Conceito)")
@@ -951,6 +984,33 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
     """
     Landing Page: Market Structure Analysis (Detailed).
     """
+    # [OPTION A] HEADER CARD FOR METADATA
+    sel_cnaes = filters.get('cnaes', [])
+    if sel_cnaes:
+        df_hier = get_cnae_hierarchy_cached()
+        if not df_hier.empty:
+            with st.container():
+                st.markdown("### 🔍 Contexto da Atividade Industrial")
+                # Iterate over selected codes
+                first = True
+                for c_code in sel_cnaes:
+                    rows = df_hier[df_hier['id_subclasse'] == c_code]
+                    if not rows.empty:
+                        c_data = rows.iloc[0]
+                        # Open by default
+                        with st.expander(f"Metadados: {c_code} - {c_data['desc_subclasse']}", expanded=True):
+                            c1, c2 = st.columns(2)
+                            with c1:
+                                st.markdown("**✅ O que COMPREENDE:**")
+                                txt_inc = c_data['observacoes_compreende']
+                                if not txt_inc or len(str(txt_inc)) < 2: txt_inc = "Sem notas de inclusão."
+                                st.success(txt_inc)
+                            with c2:
+                                st.markdown("**❌ O que NÃO COMPREENDE:**")
+                                txt_exc = c_data['observacoes_nao_compreende']
+                                if not txt_exc or len(str(txt_exc)) < 2: txt_exc = "Sem notas de exclusão."
+                                st.warning(txt_exc)
+                st.divider()
     # Dynamic Description
     summary_text = generate_structural_summary("struct")
     st.info(summary_text, icon="ℹ️")
@@ -972,13 +1032,6 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
     }
     </style>
     """, unsafe_allow_html=True)
-
-    st.subheader("Estrutura de Mercado (Micro)")
-    st.markdown("""
-    **Quem são os Estabelecimentos?**
-    Análise fundamentalista da base instalada (CNPJ). 
-    *Foco: Market Share (Capital), Concentração Geográfica e Solidez.*
-    """)
     
     with st.spinner("Processando Big Data..."):
         try:
@@ -1032,10 +1085,10 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
 
             st.markdown("##### Indicadores Chave")
             k1, k2, k3, k4 = st.columns(4)
-            k1.metric("Estabelecimentos Ativos", fmt_total, "Total em Operação", help=TOOLTIPS["kpi_ativos"])
-            k2.metric("Capital Médio", fmt_cap, "Solidez Financeira", help=TOOLTIPS["kpi_capital_medio"])
+            k1.metric("Estabelecimentos Ativos", fmt_total, "Total em Operação", help=TOOLTIPS["kpi_active_companies"])
+            k2.metric("Capital Médio", fmt_cap, "Solidez Financeira", help=TOOLTIPS["kpi_avg_capital"])
             k3.metric("Setor Líder", leader_name, "Maior Volume", help=TOOLTIPS["kpi_setor_lider"])
-            k4.metric("Concentração", f"{concentration:.1f}%", "Share do Top 1", help=TOOLTIPS["kpi_concentracao"])
+            k4.metric("Concentração", f"{concentration:.1f}%", "Share do Top 1", help=TOOLTIPS["kpi_concentration"])
             
             st.markdown("---")
             
@@ -1050,17 +1103,79 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
             sel_sec_click = alt.selection_point(fields=['sector_code'], name='sel_sec')
             
             # 1. Geo Distribution (Stacked)
+            col_geo_title, col_geo_toggle = st.columns([2, 1])
+            with col_geo_title:
+                st.markdown("##### Distribuição Geográfica")
+            with col_geo_toggle:
+                geo_mode = st.radio("Visão:", ["Volume Absoluto", "Especialização (QL)"], horizontal=True, label_visibility="collapsed")
+
             df_geo = db.get_geo_distribution(**mi_filters)
+            
             if not df_geo.empty:
-                # Reverted to Top 10 per user request
-                chart_geo = alt.Chart(df_geo.head(10)).mark_bar().add_params(sel_uf_click).encode(
-                    x=alt.X('count:Q', title='Qtd', axis=alt.Axis(grid=False)),
-                    y=alt.Y('uf:N', sort='-x', title=None, axis=alt.Axis(labelOverlap=False)), # Force all labels
-                    color=alt.condition(sel_uf_click, alt.value('#2ecc71'), alt.value('lightgray')),
-                    tooltip=['uf', 'count']
-                ).properties(height=300, title="Top Estados (Distribuição Geográfica)")
+                # Helper: Fetch Benchmark for QL
+                @st.cache_data
+                def get_benchmark_cached():
+                    return db.get_benchmark_geo()
                 
-                geo_event = st.altair_chart(chart_geo, width="stretch", on_select="rerun", key="struct_geo")
+                df_bench = get_benchmark_cached()
+                
+                # --- LOGIC: SPECIALIZATION (QL) ---
+                if geo_mode == "Especialização (QL)" and not df_bench.empty:
+                    # 1. Merge Sector Data with Benchmark
+                    df_merged = df_geo.merge(df_bench, on='uf', how='inner', suffixes=('', '_bench'))
+                    
+                    # 2. Calculate Shares
+                    total_sector = df_merged['count'].sum()
+                    total_industry = df_bench['total_count'].sum()
+                    
+                    df_merged['share_sector'] = df_merged['count'] / total_sector
+                    df_merged['share_industry'] = df_merged['total_count'] / total_industry
+                    
+                    # 3. Calculate QL = Share Sector / Share Industry
+                    df_merged['ql'] = df_merged['share_sector'] / df_merged['share_industry']
+                    
+                    # 4. Pre-calculate Color in Python to avoid Altair/Vega complex nesting error
+                    def get_color(val):
+                        if val > 1.2: return '#2ca02c' # Green
+                        if val < 0.8: return '#d62728' # Red
+                        return 'lightgray'
+                    
+                    df_merged['color_hex'] = df_merged['ql'].apply(get_color)
+
+                    # LIMIT TO TOP 10 SPECIALIZED to avoid UI clutter
+                    df_viz = df_merged.sort_values('ql', ascending=False).head(10)
+
+                    # 5. Render Chart
+                    chart_geo = alt.Chart(df_viz).mark_bar().add_params(sel_uf_click).encode(
+                        x=alt.X('ql:Q', title='Índice de Especialização (QL)', axis=alt.Axis(grid=True)),
+                        y=alt.Y('uf:N', sort='-x', title=None),
+                        # Use pre-calculated color, scale=None means "use the raw values as visuals"
+                        color=alt.Color('color_hex:N', scale=None, legend=None),
+                        # Use Opacity to indicate selection state (High opacity if selected or nothing selected)
+                        opacity=alt.condition(sel_uf_click, alt.value(1), alt.value(0.3)),
+                        tooltip=[
+                            alt.Tooltip('uf', title='Estado'), 
+                            alt.Tooltip('ql', title='Índice QL', format='.2f'),
+                            alt.Tooltip('count', title='Qtd. Empresas')
+                        ]
+                    ).properties(height=350, title="Top 10: Grau de Especialização Regional (1.0 = Média BR)")
+                    
+                    geo_event = st.altair_chart(chart_geo, width="stretch", on_select="rerun", key="struct_geo_ql")
+                    
+                    st.caption("ℹ️ **Como ler:** QL > 1 indica que o Estado é **especializado** neste setor (Hub). Reduz o viés populacional de SP/RJ.")
+                    
+                else:
+                    # --- LOGIC: ABSOLUTE VOLUME (Legacy) ---
+                    # Reverted to Top 10 per user request
+                    chart_geo = alt.Chart(df_geo.head(10)).mark_bar().add_params(sel_uf_click).encode(
+                        x=alt.X('count:Q', title='Qtd', axis=alt.Axis(grid=False)),
+                        y=alt.Y('uf:N', sort='-x', title=None, axis=alt.Axis(labelOverlap=False)), # Force all labels
+                        color=alt.condition(sel_uf_click, alt.value('#2ecc71'), alt.value('lightgray')),
+                        tooltip=['uf', 'count']
+                    ).properties(height=300, title="Top Estados (Contagem Absoluta)")
+                    
+                    st.caption("ℹ️ Entenda a Distribuição Geográfica", help=TOOLTIPS["chart_geo"])
+                    geo_event = st.altair_chart(chart_geo, width="stretch", on_select="rerun", key="struct_geo")
             else:
                 st.info("Sem dados geográficos.")
                 geo_event = None
@@ -1092,6 +1207,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                     tooltip=[alt.Tooltip('full_label', title='Setor'), alt.Tooltip('count', title='Qtd', format=',d')]
                 ).properties(height=350, title="Top Setores (Distribuição Industrial)") # Increased Height
                 
+                st.caption("ℹ️ Entenda a Distribuição Setorial", help=TOOLTIPS["chart_sector"])
                 sec_event = st.altair_chart(chart_sec, width="stretch", on_select="rerun", key="struct_sec")
             else:
                 st.info("Sem dados setoriais.")
@@ -1119,51 +1235,7 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
 
             st.markdown("---")
 
-            # --- SECTION 2: LEADERSHIP (Podium + Chart) ---
-            st.markdown("##### Maiores Capacidades Instaladas (Capital Social)")
-            
-            # Fetch Top 100 for Ranking
-            filters_rank = mi_filters.copy()
-            filters_rank['branch_mode'] = 'Somente Matrizes'
-            df_top100 = db.get_filtered_companies(limit=100, **filters_rank)
-            
-            if not df_top100.empty:
-                 df_top100 = df_top100.sort_values('capital_social', ascending=False).reset_index(drop=True)
-                 
-                 c_podium, c_chart = st.columns([1, 2])
-                 
-                 with c_podium:
-                     st.caption("**Top 3 (Matrizes)**")
-                     for i in range(min(3, len(df_top100))):
-                         row = df_top100.iloc[i]
-                         val = row['capital_social']
-                         val_fmt = f"R$ {val/1e9:,.1f} B" if val > 1e9 else f"R$ {val/1e6:,.1f} M"
-                         st.markdown(f"""
-                         <div style="background-color: var(--secondary-background-color); border-radius: 8px; padding: 10px; margin-bottom: 8px; border: 1px solid rgba(128, 128, 128, 0.2); border-left: 4px solid #f1c40f; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                            <div style="font-size: 0.8rem; font-weight: 600; opacity: 0.7;">#{i+1} LÍDER</div>
-                            <div style="font-size: 0.95rem; font-weight: 700; word-wrap: break-word; white-space: normal;">{row['razao_social']}</div>
-                            <div style="font-size: 0.8rem; opacity: 0.8;">{val_fmt}</div>
-                         </div>
-                         """, unsafe_allow_html=True)
-
-                 with c_chart:
-                     st.caption("**Ranking Top 10 (Capital Social)**", help=TOOLTIPS["chart_ranking_capital"])
-                     chart_rank = alt.Chart(df_top100.head(10)).mark_bar().encode(
-                         x=alt.X('capital_social:Q', title='Capital (R$)', axis=alt.Axis(format=',.2s', grid=False)),
-                         y=alt.Y('razao_social:N', sort='-x', title=None, axis=alt.Axis(labelLimit=200)),
-                         color=alt.value('#3b82f6'),
-                         tooltip=['razao_social', alt.Tooltip('capital_social', title='Capital Social (R$)', format=',.2f')]
-                     ).properties(height=280)
-                     st.altair_chart(chart_rank, width="stretch")
-            else:
-                st.info("Ranking indisponível para esta seleção.")
-                
-            st.caption("⚠️ **Nota de Leitura:** O ranking baseia-se no **Capital Social** (Investimento/Capacidade), e não no Faturamento/Receita.")
-            st.markdown("---")
-
-            st.divider()
-
-            # 4.5 Qualitative Profile (Maturity & Sophistication)
+            # 4.5 Qualitative Profile (Maturity & Sophistication) -> MOVED UP
             st.markdown("### Perfil Qualitativo")
             st.caption("Análise da maturidade e sofisticação jurídica do mercado.")
             
@@ -1211,9 +1283,9 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                 if not df_nature.empty:
                     chart_nature = alt.Chart(df_nature).mark_arc(innerRadius=60).encode(
                         theta=alt.Theta('count:Q'),
-                        color=alt.Color('category:N', legend=alt.Legend(title='Tipo', orient='bottom'), scale=alt.Scale(
-                            domain=['Sociedade Limitada (LTDA)', 'S.A. (Aberta/Fechada)', 'Empresário Individual', 'Empresa Pública/MEI', 'Outros'],
-                            range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+                        color=alt.Color('category:N', legend=alt.Legend(title='Tipo Jurídico', orient='bottom'), scale=alt.Scale(
+                            domain=['Sociedade Limitada (LTDA)', 'S.A. (Corporação)', 'Empresário Individual / SLU', 'Cooperativa', 'Pública / Estatal', 'Outros'],
+                            range=['#1f77b4', '#ff7f0e', '#2ca02c', '#9467bd', '#7f7f7f', '#c7c7c7']
                         )),
                         tooltip=[
                             alt.Tooltip('category', title='Natureza'),
@@ -1235,6 +1307,50 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                             st.info(f"**Mix Corporativo:** {sa_pct:.1f}% de S.A. Equilíbrio entre estruturas familiares e profissionais.")
                 else:
                     st.info("Sem dados de natureza jurídica disponíveis.")
+
+            st.divider()
+
+            # --- SECTION 2: LEADERSHIP (Podium + Chart) ---
+            st.markdown("##### Maiores Capacidades Instaladas (Capital Social)")
+            
+            # Fetch Top 100 for Ranking
+            filters_rank = mi_filters.copy()
+            filters_rank['branch_mode'] = 'Somente Matrizes'
+            df_top100 = db.get_filtered_companies(limit=100, **filters_rank)
+            
+            if not df_top100.empty:
+                 df_top100 = df_top100.sort_values('capital_social', ascending=False).reset_index(drop=True)
+                 
+                 c_podium, c_chart = st.columns([1, 2])
+                 
+                 with c_podium:
+                     st.caption("**Top 3 (Matrizes)**")
+                     for i in range(min(3, len(df_top100))):
+                         row = df_top100.iloc[i]
+                         val = row['capital_social']
+                         val_fmt = f"R$ {val/1e9:,.1f} B" if val > 1e9 else f"R$ {val/1e6:,.1f} M"
+                         st.markdown(f"""
+                         <div style="background-color: var(--secondary-background-color); border-radius: 8px; padding: 10px; margin-bottom: 8px; border: 1px solid rgba(128, 128, 128, 0.2); border-left: 4px solid #f1c40f; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                            <div style="font-size: 0.8rem; font-weight: 600; opacity: 0.7;">#{i+1} LÍDER</div>
+                            <div style="font-size: 0.95rem; font-weight: 700; word-wrap: break-word; white-space: normal;">{row['razao_social']}</div>
+                            <div style="font-size: 0.8rem; opacity: 0.8;">{val_fmt}</div>
+                         </div>
+                         """, unsafe_allow_html=True)
+
+                 with c_chart:
+                     st.caption("**Ranking Top 10 (Capital Social)**", help=TOOLTIPS["chart_ranking_capital"])
+                     chart_rank = alt.Chart(df_top100.head(10)).mark_bar().encode(
+                         x=alt.X('capital_social:Q', title='Capital (R$)', axis=alt.Axis(format=',.2s', grid=False)),
+                         y=alt.Y('razao_social:N', sort='-x', title=None, axis=alt.Axis(labelLimit=200)),
+                         color=alt.value('#3b82f6'),
+                         tooltip=['razao_social', alt.Tooltip('capital_social', title='Capital Social (R$)', format=',.2f')]
+                     ).properties(height=280)
+                     st.altair_chart(chart_rank, width="stretch")
+            else:
+                st.info("Ranking indisponível para esta seleção.")
+                
+            st.caption("⚠️ **Nota de Leitura:** O ranking baseia-se no **Capital Social** (Investimento/Capacidade), e não no Faturamento/Receita.")
+            st.markdown("---")
 
             st.divider()
 
@@ -1354,7 +1470,8 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
 
             # --- SECTION 6: DYNAMICS (Moved from Strategy Page to enforce Structure -> Flow) ---
             st.divider()
-            st.subheader("Dinâmica Recente (Fluxo)")
+            st.subheader("Vitalidade do Setor (Fluxo & Atratividade)")
+            st.caption("Monitoramento de **Novas Entradas** como indicador antecedente de aquecimento (Leading Indicator).")
             
             # 1. Fetch Company Trend (Micro)
             trend_filters = filters.copy()
@@ -1387,8 +1504,16 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                         'Indústria (IBGE)': df_macro.loc[common_idx].values
                     })
                     
-                    corr = df_chart['Novas Empresas'].corr(df_chart['Indústria (IBGE)'])
-                    
+                    # SAFEGUARD: Correlation requires variance
+                    try:
+                        if df_chart['Novas Empresas'].nunique() <= 1 or df_chart['Indústria (IBGE)'].nunique() <= 1:
+                            corr = 0.0 # No variance -> No correlation
+                        else:
+                            corr = df_chart['Novas Empresas'].corr(df_chart['Indústria (IBGE)'])
+                            if pd.isna(corr): corr = 0.0
+                    except:
+                        corr = 0.0
+
                     if corr > 0.7: insight = "Forte Correlação Positiva"
                     elif corr < -0.7: insight = "Forte Correlação Negativa"
                     elif abs(corr) < 0.3: insight = "Sem Correlação Clara"

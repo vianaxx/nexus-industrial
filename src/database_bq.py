@@ -179,8 +179,14 @@ class BigQueryDatabase:
                 rows = []
                 for item in data:
                     name = item['nome']
+                    # Extract UF safely
+                    try:
+                        uf = item['microrregiao']['mesorregiao']['UF']['sigla']
+                    except:
+                        uf = None
+                        
                     norm_key = unicodedata.normalize('NFKD', name).encode('ASCII', 'ignore').decode('ASCII').upper()
-                    rows.append({'normalized': norm_key, 'correct': name})
+                    rows.append({'normalized': norm_key, 'correct': name, 'uf_ibge': uf})
                 return pd.DataFrame(rows)
         except Exception as e:
             print(f"IBGE API Error: {e}")
@@ -188,18 +194,41 @@ class BigQueryDatabase:
 
     def get_all_municipios(self) -> pd.DataFrame:
         if not self.client: return pd.DataFrame()
+        # Revert SQL (Remove 'uf' as it likely caused the crash)
         sql = f"SELECT codigo, descricao FROM `{self.dataset_id}.municipios` ORDER BY descricao"
-        df_bq = self.client.query(sql).to_dataframe()
+        try:
+            df_bq = self.client.query(sql).to_dataframe()
+        except Exception as e:
+            print(f"BQ Query Error: {e}")
+            return pd.DataFrame()
         
         df_ibge = self._fetch_ibge_municipios()
         
+        # Mapping for Code -> UF (Fallback)
+        CODE_TO_UF = {
+            '11': 'RO', '12': 'AC', '13': 'AM', '14': 'RR', '15': 'PA', '16': 'AP', '17': 'TO',
+            '21': 'MA', '22': 'PI', '23': 'CE', '24': 'RN', '25': 'PB', '26': 'PE', '27': 'AL',
+            '28': 'SE', '29': 'BA', '31': 'MG', '32': 'ES', '33': 'RJ', '35': 'SP', '41': 'PR',
+            '42': 'SC', '43': 'RS', '50': 'MS', '51': 'MT', '52': 'GO', '53': 'DF'
+        }
+        
+        # 1. Try to derive from Code (Most reliable/fastest)
+        if not df_bq.empty and 'codigo' in df_bq.columns:
+            df_bq['uf_derived'] = df_bq['codigo'].astype(str).str.slice(0, 2).map(CODE_TO_UF)
+        else:
+            df_bq['uf_derived'] = None
+
         if not df_ibge.empty and not df_bq.empty:
             df_bq['match_key'] = df_bq['descricao'].str.strip()
             merged = df_bq.merge(df_ibge, left_on='match_key', right_on='normalized', how='left')
             merged['final_name'] = merged['correct'].fillna(merged['descricao'].str.title())
-            return merged[['codigo', 'final_name']].rename(columns={'final_name': 'descricao'}).sort_values('descricao')
+            # Use IBGE UF if available, else Derived, else Unknown
+            merged['uf'] = merged['uf_ibge'].fillna(merged['uf_derived'])
+            
+            return merged[['codigo', 'final_name', 'uf']].rename(columns={'final_name': 'descricao'}).sort_values('descricao')
             
         df_bq['descricao'] = df_bq['descricao'].str.title()
+        df_bq['uf'] = df_bq['uf_derived']
         return df_bq
 
     def get_industrial_divisions(self) -> pd.DataFrame:
@@ -424,7 +453,12 @@ class BigQueryDatabase:
         if not self.client: return pd.DataFrame()
         params = []
         where_clause = self._build_where_clause(params, **kwargs)
-        where_sql = f"WHERE {where_clause}" if where_clause else ""
+        
+        # Robust WHERE construction
+        if where_clause:
+            where_sql = f"WHERE {where_clause} AND st.uf != 'EX'"
+        else:
+            where_sql = "WHERE st.uf != 'EX'"
         
         sql = f"""
             SELECT st.uf, count(*) as count
@@ -438,6 +472,26 @@ class BigQueryDatabase:
         """
         job_config = bigquery.QueryJobConfig(query_parameters=params)
         return self.client.query(sql, job_config=job_config).to_dataframe()
+
+    def get_benchmark_geo(self) -> pd.DataFrame:
+        """
+        Returns the TOTAL industrial distribution per UF (The 'Universe').
+        Used for Location Quotient (QL) calculation.
+        Scope: Industrial Sections (05-33).
+        """
+        if not self.client: return pd.DataFrame()
+        
+        # Hardcoded Industrial Scope for consistency with project definition
+        sql = f"""
+            SELECT st.uf, count(*) as total_count
+            FROM `{self.dataset_id}.empresas` e
+            JOIN `{self.dataset_id}.estabelecimentos` st 
+                ON e.cnpj_basico = st.cnpj_basico
+            WHERE CAST(SUBSTR(st.cnae_fiscal_principal, 1, 2) AS INT64) BETWEEN 5 AND 33
+            AND st.uf != 'EX' -- Exclude Exterior from Benchmark too
+            GROUP BY st.uf
+        """
+        return self.client.query(sql).to_dataframe()
 
     def get_city_distribution(self, **kwargs) -> pd.DataFrame:
         if not self.client: return pd.DataFrame()
@@ -577,10 +631,21 @@ class BigQueryDatabase:
         sql = f"""
             SELECT 
                 CASE 
-                    WHEN e.natureza_juridica LIKE '206-%' THEN 'Sociedade Limitada (LTDA)'
-                    WHEN e.natureza_juridica LIKE '204-%' OR e.natureza_juridica LIKE '205-%' THEN 'S.A. (Aberta/Fechada)'
-                    WHEN e.natureza_juridica LIKE '213-%' THEN 'Empresário Individual'
-                    WHEN e.natureza_juridica LIKE '230-%' OR e.natureza_juridica LIKE '231-%' THEN 'Empresa Pública/MEI'
+                    -- 206-2: Sociedade Empresária Limitada
+                    WHEN CAST(e.natureza_juridica AS STRING) LIKE '206%' THEN 'Sociedade Limitada (LTDA)'
+                    
+                    -- 204-6 (S.A. Aberta), 205-4 (S.A. Fechada), 203-8 (Mista)
+                    WHEN CAST(e.natureza_juridica AS STRING) LIKE '204%' OR CAST(e.natureza_juridica AS STRING) LIKE '205%' OR CAST(e.natureza_juridica AS STRING) LIKE '203%' THEN 'S.A. (Corporação)'
+                    
+                    -- 213-5 (Empresário Individual), 230-5 (EIRELI), 232-1 (Unipessoal)
+                    WHEN CAST(e.natureza_juridica AS STRING) LIKE '213%' OR CAST(e.natureza_juridica AS STRING) LIKE '230%' OR CAST(e.natureza_juridica AS STRING) LIKE '232%' THEN 'Empresário Individual / SLU'
+                    
+                    -- 214-3 (Cooperativa) - Relevante para Agroindústria
+                    WHEN CAST(e.natureza_juridica AS STRING) LIKE '214%' THEN 'Cooperativa'
+                    
+                    -- 1xx-x (Administração Pública)
+                    WHEN CAST(e.natureza_juridica AS STRING) LIKE '1%' THEN 'Pública / Estatal'
+                    
                     ELSE 'Outros'
                 END as category,
                 count(*) as count

@@ -39,13 +39,23 @@ def main():
         
     # --- PAGE DEFINITIONS ---
     def page_structure():
-       # st.header("1. Estrutura de Mercado")
+        st.title("Estrutura de Mercado")
+        st.markdown("""
+        **Quem são os Estabelecimentos?**  
+        Análise fundamentalista da base instalada (CNPJ).  
+        *Foco: Market Share (Capital), Especialização Regional e Solidez.*
+        """)
         st.markdown("---")
         filters = render_structure_filters(db)
         render_market_intelligence_view(db, filters)
 
     def page_macro():
-       # st.header("2. Atividade Industrial")
+        st.title("Atividade Industrial")
+        st.markdown("""
+        **Como está a Produção?**  
+        Monitoramento de curto prazo da atividade física (PIM-PF/IBGE).  
+        *Foco: Sazonalidade, Tendência e Ciclos Econômicos.*
+        """)
         st.markdown("---")
         filters = render_macro_filters(db)
         render_macro_view(filters)
