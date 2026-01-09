@@ -128,7 +128,14 @@ class BigQueryDatabase:
             where_parts.append("st.situacao_cadastral = '02'")
 
         where_cond = " AND ".join(where_parts)
-        sql = f"{base_query} WHERE {where_cond} LIMIT @limit_val"
+        
+        # Intelligent Ordering:
+        # 1. Capital Social DESC (biggest companies first)
+        # 2. Matriz First (cnpj_ordem = '0001' comes before '0002', etc.)
+        # 3. CNPJ Order ASC (0001 < 0002 < 0003...)
+        order_by = "ORDER BY capital_social DESC, st.cnpj_ordem ASC"
+        
+        sql = f"{base_query} WHERE {where_cond} {order_by} LIMIT @limit_val"
         
         return self.client.query(sql, job_config=job_config).to_dataframe()
 
