@@ -395,6 +395,13 @@ class BigQueryDatabase:
     def get_filtered_companies(self, limit=100, **kwargs) -> pd.DataFrame:
         if not self.client: return pd.DataFrame()
         params = []
+        
+        # CRITICAL: Remove limit when searching (search_term present)
+        # This allows showing ALL matching results for global search
+        search_term = kwargs.get('search_term')
+        if search_term:
+            limit = None  # Disable limit for search
+        
         if limit and limit > 0:
              params.append(bigquery.ScalarQueryParameter("limit_val", "INT64", limit))
         
