@@ -65,10 +65,16 @@ class BigQueryDatabase:
             print(f"BQ Error: {e}")
             return 0
 
-    def search_companies(self, query: str, search_type: str, limit: int = 100) -> pd.DataFrame:
+    def search_companies(self, query: str, search_type: str, limit: int = 100, only_active: bool = True) -> pd.DataFrame:
         """
         Searches for companies using BigQuery SQL.
         Joins with Estabelecimentos to get Status and Location (Matriz only).
+        
+        Args:
+            query: Search term (company name or CNPJ)
+            search_type: "name" or "cnpj"
+            limit: Maximum results to return
+            only_active: If True, filter out inactive companies (situacao_cadastral != '02')
         """
         if not self.client: return pd.DataFrame()
 
@@ -116,6 +122,10 @@ class BigQueryDatabase:
         # CRITICAL: Enforce Project Scope (Ind. Only) in Search too
         if PROJECT_SCOPE_ONLY:
             where_parts.append("CAST(SUBSTR(st.cnae_fiscal_principal, 1, 2) AS INT64) BETWEEN 5 AND 33")
+        
+        # NEW: Respect "Only Active" filter
+        if only_active:
+            where_parts.append("st.situacao_cadastral = '02'")
 
         where_cond = " AND ".join(where_parts)
         sql = f"{base_query} WHERE {where_cond} LIMIT @limit_val"
