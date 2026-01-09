@@ -17,22 +17,47 @@ def get_options_cached(_db, method_name):
 
 @st.cache_data
 def get_cnae_hierarchy_cached():
-    path = "data/processed/dim_cnae.parquet"
-    if os.path.exists(path):
-        df = pd.read_parquet(path)
-        # Create compatibility columns for existing logic
+    # Try new CSV path first
+    csv_path = "src/data/cnae_hierarchy.csv"
+    parquet_path = "data/processed/dim_cnae.parquet"
+    
+    if os.path.exists(csv_path):
+        df = pd.read_csv(csv_path, dtype=str)
+        
+        # Map CSV columns to expected dashboard columns
+        if 'divisao_code' in df.columns:
+            df['id_divisao'] = df['divisao_code']
+            df['id_grupo'] = df['grupo_code']
+            df['id_classe'] = df['classe_code']
+            df['id_subclasse'] = df['subclasse_code']
+            df['desc_subclasse'] = df['desc'] if 'desc' in df.columns else df['subclasse_code']
+        
+        # Clean IDs: remove .0 suffix and punctuation
+        for col in ['id_divisao', 'id_grupo', 'id_classe', 'id_subclasse']:
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.replace(r'\.0$', '', regex=True)
+                df[col] = df[col].str.replace(r'[^\w]', '', regex=True)
+        
+        # Ensure labels exist
+        if 'div_label' not in df.columns:
+            df['div_label'] = df['id_divisao'] + " - " + df['divisao_desc'].fillna('')
+        if 'grp_label' not in df.columns:
+            df['grp_label'] = df['id_grupo'] + " - " + df['grupo_desc'].fillna('')
+        if 'cls_label' not in df.columns:
+            df['cls_label'] = df['id_classe'] + " - " + df['classe_desc'].fillna('')
+            
+        return df
+    elif os.path.exists(parquet_path):
+        df = pd.read_parquet(parquet_path)
         df['divisao_code'] = df['id_divisao']
         df['div_label'] = df['id_divisao'] + " - " + df['desc_divisao']
-        
         df['grupo_code'] = df['id_grupo']
         df['grp_label'] = df['id_grupo'] + " - " + df['desc_grupo']
-        
         df['classe_code'] = df['id_classe']
         df['cls_label'] = df['id_classe'] + " - " + df['desc_classe']
-
-        # Ensure strings
         df['id_subclasse'] = df['id_subclasse'].astype(str)
         return df
+    
     return pd.DataFrame()
 
 def generate_structural_summary(key_suffix: str) -> str:
@@ -986,34 +1011,9 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
     """
     # [OPTION A] HEADER CARD FOR METADATA
     sel_cnaes = filters.get('cnaes', [])
-    if sel_cnaes:
-        df_hier = get_cnae_hierarchy_cached()
-        if not df_hier.empty:
-            with st.container():
-                st.markdown("### 🔍 Contexto da Atividade Industrial")
-                # Iterate over selected codes
-                first = True
-                for c_code in sel_cnaes:
-                    rows = df_hier[df_hier['id_subclasse'] == c_code]
-                    if not rows.empty:
-                        c_data = rows.iloc[0]
-                        # Open by default
-                        with st.expander(f"Metadados: {c_code} - {c_data['desc_subclasse']}", expanded=True):
-                            c1, c2 = st.columns(2)
-                            with c1:
-                                st.markdown("**✅ O que COMPREENDE:**")
-                                txt_inc = c_data['observacoes_compreende']
-                                if not txt_inc or len(str(txt_inc)) < 2: txt_inc = "Sem notas de inclusão."
-                                st.success(txt_inc)
-                            with c2:
-                                st.markdown("**❌ O que NÃO COMPREENDE:**")
-                                txt_exc = c_data['observacoes_nao_compreende']
-                                if not txt_exc or len(str(txt_exc)) < 2: txt_exc = "Sem notas de exclusão."
-                                st.warning(txt_exc)
-                st.divider()
     # Dynamic Description
     summary_text = generate_structural_summary("struct")
-    st.info(summary_text, icon="ℹ️")
+    st.info(summary_text)
 
     # Unpack Filters
     sel_ufs = filters.get("ufs", [])
