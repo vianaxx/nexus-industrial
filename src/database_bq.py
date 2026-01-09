@@ -135,7 +135,8 @@ class BigQueryDatabase:
         # 3. CNPJ Order ASC (0001 < 0002 < 0003...)
         order_by = "ORDER BY capital_social DESC, st.cnpj_ordem ASC"
         
-        sql = f"{base_query} WHERE {where_cond} {order_by} LIMIT @limit_val"
+        # NO LIMIT for global search - show ALL matching results
+        sql = f"{base_query} WHERE {where_cond} {order_by}"
         
         return self.client.query(sql, job_config=job_config).to_dataframe()
 
