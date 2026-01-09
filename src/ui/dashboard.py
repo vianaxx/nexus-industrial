@@ -4,6 +4,13 @@ import altair as alt
 import os
 from ..database import CNPJDatabase
 from ..utils import format_cnpj, format_currency, format_date, get_status_description, format_cnae
+from ..utils.formatters import (
+    format_br_number,
+    format_count,
+    format_currency as format_currency_br,
+    format_percentage,
+    format_index
+)
 from ..ibge import fetch_industry_data, get_latest_metrics
 from ..classification import get_industrial_typology, get_divisions_for_typology, get_divisions_for_value_chain
 from .tooltips import TOOLTIPS
@@ -1077,18 +1084,37 @@ def render_market_intelligence_view(db: CNPJDatabase, filters):
                 concentration = (top_sec['count'] / total_mkt) * 100
                 leader_name = top_sec['sector_code']
 
-            # Helper: Formats
-            fmt_total = f"{true_total:,.0f}"
-            if true_avg_cap >= 1e9: fmt_cap = f"R$ {true_avg_cap/1e9:,.2f} B"
-            elif true_avg_cap >= 1e6: fmt_cap = f"R$ {true_avg_cap/1e6:,.2f} MM"
-            else: fmt_cap = f"R$ {true_avg_cap:,.2f}"
+            # Helper: Formats (Brazilian Standard - ABNT NBR 5891)
+            fmt_total = format_count(true_total, abbreviate=False)
+            fmt_cap = format_currency_br(true_avg_cap, context="kpi")
+            fmt_cap_tooltip = format_currency_br(true_avg_cap, context="tooltip")
 
             st.markdown("##### Indicadores Chave")
             k1, k2, k3, k4 = st.columns(4)
-            k1.metric("Estabelecimentos Ativos", fmt_total, "Total em Operação", help=TOOLTIPS["kpi_active_companies"])
-            k2.metric("Capital Médio", fmt_cap, "Solidez Financeira", help=TOOLTIPS["kpi_avg_capital"])
-            k3.metric("Setor Líder", leader_name, "Maior Volume", help=TOOLTIPS["kpi_setor_lider"])
-            k4.metric("Concentração", f"{concentration:.1f}%", "Share do Top 1", help=TOOLTIPS["kpi_concentration"])
+            k1.metric(
+                "Estabelecimentos Ativos", 
+                fmt_total, 
+                "Total em Operação", 
+                help=TOOLTIPS["kpi_active_companies"]
+            )
+            k2.metric(
+                "Capital Médio", 
+                fmt_cap, 
+                "Solidez Financeira", 
+                help=f"{TOOLTIPS['kpi_avg_capital']}\n\nValor exato: {fmt_cap_tooltip}"
+            )
+            k3.metric(
+                "Setor Líder", 
+                leader_name, 
+                "Maior Volume", 
+                help=TOOLTIPS["kpi_setor_lider"]
+            )
+            k4.metric(
+                "Concentração", 
+                format_percentage(concentration, precision=1), 
+                "Share do Top 1", 
+                help=TOOLTIPS["kpi_concentration"]
+            )
             
             st.markdown("---")
             
