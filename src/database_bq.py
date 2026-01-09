@@ -119,9 +119,9 @@ class BigQueryDatabase:
             job_config.query_parameters[0] = bigquery.ScalarQueryParameter("search_term", "STRING", f"%{clean_query}%")
             where_parts.append("e.cnpj_basico LIKE @search_term")
             
-        # CRITICAL: Enforce Project Scope (Ind. Only) in Search too
-        if PROJECT_SCOPE_ONLY:
-            where_parts.append("CAST(SUBSTR(st.cnae_fiscal_principal, 1, 2) AS INT64) BETWEEN 5 AND 33")
+        # REMOVED: Project Scope filter from Search (allows finding Holdings, Logistics, etc.)
+        # Search is now truly GLOBAL - finds any company regardless of CNAE
+        # Navigation filters (Division/Group/Class) remain restricted to 05-33
         
         # NEW: Respect "Only Active" filter
         if only_active:
