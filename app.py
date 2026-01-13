@@ -89,18 +89,11 @@ def main():
         
         st.divider()
         
-        with st.expander("Escopo e Metodologia"):
-            st.markdown("""
-            **Foco Industrial (Supply Side)**
-            Monitoramos exclusivamente o núcleo produtivo nacional (CNAE 05-33):
+        with st.expander("Nota de Escopo", expanded=True):
+            st.caption("""
+            **Este dashboard analisa exclusivamente empresas classificadas nas Seções B e C da CNAE (Indústria Extrativa e de Transformação).**
             
-            1.  **Ind. Extrativa:** Minérios, Petróleo.
-            2.  **Ind. Transformação:** Manufatura.
-            
-            **Por que esta seleção?**
-            Para isolar a *capacidade instalada* real, removendo o ruído de setores transacionais (Comércio, Serviços) ou primários (Agro).
-            
-            **Dados:** Base oficial da Receita Federal (CNPJ) e índices físicos do IBGE (PIM-PF).
+            A classificação é baseada no CNAE principal declarado à Receita Federal, que possui finalidade fiscal e pode não refletir integralmente a operação produtiva real da empresa no campo.
             """)
         
     # --- NAVIGATION ROUTER (Hidden) ---
